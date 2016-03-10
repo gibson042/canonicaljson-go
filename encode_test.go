@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package json
+package canonicaljson
 
 import (
 	"bytes"
+	"encoding/json"
 	"math"
 	"reflect"
 	"testing"
@@ -93,7 +94,7 @@ func TestStringTag(t *testing.T) {
 
 	// Verify that it round-trips.
 	var s2 StringTag
-	err = NewDecoder(bytes.NewReader(got)).Decode(&s2)
+	err = json.NewDecoder(bytes.NewReader(got)).Decode(&s2)
 	if err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
@@ -449,16 +450,6 @@ func TestIssue10281(t *testing.T) {
 	}
 }
 
-func TestHTMLEscape(t *testing.T) {
-	var b, want bytes.Buffer
-	m := `{"M":"<html>foo &` + "\xe2\x80\xa8 \xe2\x80\xa9" + `</html>"}`
-	want.Write([]byte(`{"M":"\u003chtml\u003efoo \u0026\u2028 \u2029\u003c/html\u003e"}`))
-	HTMLEscape(&b, []byte(m))
-	if !bytes.Equal(b.Bytes(), want.Bytes()) {
-		t.Errorf("HTMLEscape(&b, []byte(m)) = %s; want %s", b.Bytes(), want.Bytes())
-	}
-}
-
 // golang.org/issue/8582
 func TestEncodePointerString(t *testing.T) {
 	type stringPointer struct {
@@ -473,7 +464,7 @@ func TestEncodePointerString(t *testing.T) {
 		t.Errorf("Marshal = %s, want %s", got, want)
 	}
 	var back stringPointer
-	err = Unmarshal(b, &back)
+	err = json.Unmarshal(b, &back)
 	if err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}

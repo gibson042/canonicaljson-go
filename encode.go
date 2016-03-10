@@ -1,14 +1,11 @@
-// Copyright 2010 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// Package json implements encoding and decoding of JSON objects as defined in
-// RFC 4627. The mapping between JSON objects and Go values is described
-// in the documentation for the Marshal and Unmarshal functions.
+// Package canonicaljson implements encoding and decoding of JSON objects
+// as defined in RFC 4627. The mapping between JSON objects and Go values
+// is described in the documentation for the Marshal and Unmarshal
+// functions.
 //
 // See "JSON and Go" for an introduction to this package:
 // https://golang.org/doc/articles/json_and_go.html
-package json
+package canonicaljson
 
 import (
 	"bytes"
@@ -36,7 +33,7 @@ import (
 // its MarshalText method.
 // The nil pointer exception is not strictly necessary
 // but mimics a similar, necessary exception in the behavior of
-// UnmarshalJSON.
+// json.UnmarshalJSON.
 //
 // Otherwise, Marshal uses the following type-dependent default encodings:
 //
@@ -101,7 +98,7 @@ import (
 // that type as its name, rather than being anonymous.
 //
 // The Go visibility rules for struct fields are amended for JSON when
-// deciding which field to marshal or unmarshal. If there are
+// deciding which field to marshal. If there are
 // multiple fields at the same level, and that level is the least
 // nested (and would therefore be the nesting level selected by the
 // usual Go rules), the following extra rules apply:
@@ -157,41 +154,6 @@ func MarshalIndent(v interface{}, prefix, indent string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// HTMLEscape appends to dst the JSON-encoded src with <, >, &, U+2028 and U+2029
-// characters inside string literals changed to \u003c, \u003e, \u0026, \u2028, \u2029
-// so that the JSON will be safe to embed inside HTML <script> tags.
-// For historical reasons, web browsers don't honor standard HTML
-// escaping within <script> tags, so an alternative JSON encoding must
-// be used.
-func HTMLEscape(dst *bytes.Buffer, src []byte) {
-	// The characters can only appear in string literals,
-	// so just scan the string one byte at a time.
-	start := 0
-	for i, c := range src {
-		if c == '<' || c == '>' || c == '&' {
-			if start < i {
-				dst.Write(src[start:i])
-			}
-			dst.WriteString(`\u00`)
-			dst.WriteByte(hex[c>>4])
-			dst.WriteByte(hex[c&0xF])
-			start = i + 1
-		}
-		// Convert U+2028 and U+2029 (E2 80 A8 and E2 80 A9).
-		if c == 0xE2 && i+2 < len(src) && src[i+1] == 0x80 && src[i+2]&^1 == 0xA8 {
-			if start < i {
-				dst.Write(src[start:i])
-			}
-			dst.WriteString(`\u202`)
-			dst.WriteByte(hex[src[i+2]&0xF])
-			start = i + 3
-		}
-	}
-	if start < len(src) {
-		dst.Write(src[start:])
-	}
-}
-
 // Marshaler is the interface implemented by objects that
 // can marshal themselves into valid JSON.
 type Marshaler interface {
@@ -205,7 +167,7 @@ type UnsupportedTypeError struct {
 }
 
 func (e *UnsupportedTypeError) Error() string {
-	return "json: unsupported type: " + e.Type.String()
+	return "canonicaljson: unsupported type: " + e.Type.String()
 }
 
 type UnsupportedValueError struct {
@@ -214,21 +176,7 @@ type UnsupportedValueError struct {
 }
 
 func (e *UnsupportedValueError) Error() string {
-	return "json: unsupported value: " + e.Str
-}
-
-// Before Go 1.2, an InvalidUTF8Error was returned by Marshal when
-// attempting to encode a string value with invalid UTF-8 sequences.
-// As of Go 1.2, Marshal instead coerces the string to valid UTF-8 by
-// replacing invalid bytes with the Unicode replacement rune U+FFFD.
-// This error is no longer generated but is kept for backwards compatibility
-// with programs that might mention it.
-type InvalidUTF8Error struct {
-	S string // the whole string value that caused the error
-}
-
-func (e *InvalidUTF8Error) Error() string {
-	return "json: invalid UTF-8 in string: " + strconv.Quote(e.S)
+	return "canonicaljson: unsupported value: " + e.Str
 }
 
 type MarshalerError struct {
@@ -237,7 +185,7 @@ type MarshalerError struct {
 }
 
 func (e *MarshalerError) Error() string {
-	return "json: error calling MarshalJSON for type " + e.Type.String() + ": " + e.Err.Error()
+	return "canonicaljson: error calling MarshalJSON for type " + e.Type.String() + ": " + e.Err.Error()
 }
 
 var hex = "0123456789abcdef"
@@ -536,7 +484,7 @@ func stringEncoder(e *encodeState, v reflect.Value, quoted bool) {
 			numStr = "0" // Number's zero-val
 		}
 		if !isValidNumber(numStr) {
-			e.error(fmt.Errorf("json: invalid number literal %q", numStr))
+			e.error(fmt.Errorf("canonicaljson: invalid number literal %q", numStr))
 		}
 		e.WriteString(numStr)
 		return

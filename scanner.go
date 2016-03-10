@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package json
+package canonicaljson
 
 // JSON value parser state machine.
 // Just about at the limit of what is reasonable to write by hand.
@@ -607,7 +607,7 @@ func quoteChar(c byte) string {
 // This gives callers a simple 1-byte undo mechanism.
 func (s *scanner) undo(scanCode int) {
 	if s.redo {
-		panic("json: invalid use of scanner")
+		panic("canonicaljson: invalid use of scanner")
 	}
 	s.redoCode = scanCode
 	s.redoState = s.step

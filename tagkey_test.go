@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package json
+package canonicaljson
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -97,7 +98,7 @@ func TestStructTagObjectKey(t *testing.T) {
 			t.Fatalf("Marshal(%#q) failed: %v", tt.raw, err)
 		}
 		var f interface{}
-		err = Unmarshal(b, &f)
+		err = json.Unmarshal(b, &f)
 		if err != nil {
 			t.Fatalf("Unmarshal(%#q) failed: %v", b, err)
 		}
