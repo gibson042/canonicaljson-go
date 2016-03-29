@@ -64,13 +64,13 @@ func TestCompact(t *testing.T) {
 }
 
 func TestCompactSeparators(t *testing.T) {
-	// U+2028 and U+2029 should be escaped inside strings.
+	// U+2028 and U+2029 should be unescaped inside strings.
 	// They should not appear outside strings.
 	tests := []struct {
 		in, compact string
 	}{
-		{"{\"\u2028\": 1}", `{"\u2028":1}`},
-		{"{\"\u2029\" :2}", `{"\u2029":2}`},
+		{"{\"\u2028\": 1}", "{\"\u2028\":1}"},
+		{"{\"\u2029\" :2}", "{\"\u2029\":2}"},
 	}
 	for _, tt := range tests {
 		var buf bytes.Buffer

@@ -41,15 +41,15 @@ type Optionals struct {
 }
 
 var optionalsExpected = `{
- "sr": "",
- "omitempty": 0,
- "slr": null,
- "mr": {},
- "fr": 0,
  "br": false,
- "ur": 0,
+ "fr": 0.0E0,
+ "mr": {},
+ "omitempty": 0.0E0,
+ "slr": null,
+ "sr": "",
+ "sto": {},
  "str": {},
- "sto": {}
+ "ur": 0.0E0
 }`
 
 func TestOmitEmpty(t *testing.T) {
@@ -230,7 +230,7 @@ func (CText) MarshalText() ([]byte, error) {
 
 func TestMarshalerEscaping(t *testing.T) {
 	var c C
-	want := `"\u003c\u0026\u003e"`
+	want := `"<&>"`
 	b, err := Marshal(c)
 	if err != nil {
 		t.Fatalf("Marshal(c): %v", err)
@@ -240,7 +240,7 @@ func TestMarshalerEscaping(t *testing.T) {
 	}
 
 	var ct CText
-	want = `"\"\u003c\u0026\u003e\""`
+	want = `"\"<&>\""`
 	b, err = Marshal(ct)
 	if err != nil {
 		t.Fatalf("Marshal(ct): %v", err)
@@ -259,7 +259,7 @@ type MyStruct struct {
 func TestAnonymousNonstruct(t *testing.T) {
 	var i IntType = 11
 	a := MyStruct{i}
-	const want = `{"IntType":11}`
+	const want = `{"IntType":1.1E1}`
 
 	b, err := Marshal(a)
 	if err != nil {
@@ -313,7 +313,7 @@ func TestEmbeddedBug(t *testing.T) {
 	if err != nil {
 		t.Fatal("Marshal:", err)
 	}
-	want = `{"A":23}`
+	want = `{"A":2.3E1}`
 	got = string(b)
 	if got != want {
 		t.Fatalf("Marshal: got %s want %s", got, want)
@@ -488,11 +488,11 @@ var encodeStringTests = []struct {
 	{"\x05", `"\u0005"`},
 	{"\x06", `"\u0006"`},
 	{"\x07", `"\u0007"`},
-	{"\x08", `"\u0008"`},
+	{"\x08", `"\b"`},
 	{"\x09", `"\t"`},
 	{"\x0a", `"\n"`},
 	{"\x0b", `"\u000b"`},
-	{"\x0c", `"\u000c"`},
+	{"\x0c", `"\f"`},
 	{"\x0d", `"\r"`},
 	{"\x0e", `"\u000e"`},
 	{"\x0f", `"\u000f"`},
@@ -512,6 +512,7 @@ var encodeStringTests = []struct {
 	{"\x1d", `"\u001d"`},
 	{"\x1e", `"\u001e"`},
 	{"\x1f", `"\u001f"`},
+	{"\x7f", "\"\x7f\""},
 }
 
 func TestEncodeString(t *testing.T) {
@@ -525,5 +526,87 @@ func TestEncodeString(t *testing.T) {
 		if out != tt.out {
 			t.Errorf("Marshal(%q) = %#q, want %#q", tt.in, out, tt.out)
 		}
+	}
+}
+
+var named = map[string]interface{}{
+	"\x08": nil,
+	"\x09": nil,
+	"\x0a": nil,
+	"\x0c": nil,
+	"\x0d": nil,
+	"\x00": nil,
+	"\x01": nil,
+	"\x02": nil,
+	"\x03": nil,
+	"\x04": nil,
+	"\x05": nil,
+	"\x06": nil,
+	"\x07": nil,
+	"\x0b": nil,
+	"\x0e": nil,
+	"\x0f": nil,
+	"\x10": nil,
+	"\x11": nil,
+	"\x12": nil,
+	"\x13": nil,
+	"\x14": nil,
+	"\x15": nil,
+	"\x16": nil,
+	"\x17": nil,
+	"\x18": nil,
+	"\x19": nil,
+	"\x1a": nil,
+	"\x1b": nil,
+	"\x1c": nil,
+	"\x1d": nil,
+	"\x1e": nil,
+	"\x1f": nil,
+	"\x7f": nil,
+}
+
+var namedExpected = `{
+ "\u0000": null,
+ "\u0001": null,
+ "\u0002": null,
+ "\u0003": null,
+ "\u0004": null,
+ "\u0005": null,
+ "\u0006": null,
+ "\u0007": null,
+ "\b": null,
+ "\t": null,
+ "\n": null,
+ "\u000b": null,
+ "\f": null,
+ "\r": null,
+ "\u000e": null,
+ "\u000f": null,
+ "\u0010": null,
+ "\u0011": null,
+ "\u0012": null,
+ "\u0013": null,
+ "\u0014": null,
+ "\u0015": null,
+ "\u0016": null,
+ "\u0017": null,
+ "\u0018": null,
+ "\u0019": null,
+ "\u001a": null,
+ "\u001b": null,
+ "\u001c": null,
+ "\u001d": null,
+ "\u001e": null,
+ "\u001f": null,
+ "` + "\x7f" + `": null
+}`
+
+func TestEncodeKey(t *testing.T) {
+	result, err := MarshalIndent(named, "", " ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := string(result); result != namedExpected {
+		t.Errorf(" got: %s\nwant: %s\n", result, namedExpected)
 	}
 }

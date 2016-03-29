@@ -1,19 +1,31 @@
-// Package canonicaljson implements encoding and decoding of JSON objects
-// as defined in RFC 4627. The mapping between JSON objects and Go values
-// is described in the documentation for the Marshal and Unmarshal
-// functions.
-//
-// See "JSON and Go" for an introduction to this package:
-// https://golang.org/doc/articles/json_and_go.html
+// Package canonicaljson implements canonical serialization of Go
+// objects to JSON as specified in "JSON Canonical Form" Internet Draft
+// https://tools.ietf.org/html/draft-staykov-hu-json-canonical-form-00
+// and extended to include shortest-representation normalization of all
+// strings (both keys and values).
+// The provided interface should match that of standard package
+// "encoding/json" (from which it is derived) wherever they overlap (and
+// in fact, this package is essentially a 2016-03-09 fork from
+// golang/go@9d77ad8d34ce56e182adc30cd21af50a4b00932c:src/encoding/json
+// ). Notable differences:
+//   - Object keys are sorted lexicographically by codepoint
+//   - JSON numbers are always represented in capital-E exponential
+//     notation with mantissa in (-10, 10) and no insignificant signs or
+//     zeroes beyond those required to force a decimal point.
+//   - JSON strings are represented in UTF-8 with minimal byte length,
+//     using escapes only when necessary for validity and Unicode
+//     escapes (lowercase hex) only when there is no shorter option.
 package canonicaljson
 
 import (
 	"bytes"
 	"encoding"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"math"
 	"reflect"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -23,10 +35,10 @@ import (
 	"unicode/utf8"
 )
 
-// Marshal returns the JSON encoding of v.
+// Marshal returns the canonical JSON encoding of v.
 //
 // Marshal traverses the value v recursively.
-// If an encountered value implements the Marshaler interface
+// If an encountered value implements the json.Marshaler interface
 // and is not a nil pointer, Marshal calls its MarshalJSON method
 // to produce JSON. If no MarshalJSON method is present but the
 // value implements encoding.TextMarshaler instead, Marshal calls
@@ -39,13 +51,23 @@ import (
 //
 // Boolean values encode as JSON booleans.
 //
-// Floating point, integer, and Number values encode as JSON numbers.
+// Floating point, integer, and Number values encode as JSON numbers,
+// represented in capital-E exponential notation with the shortest
+// possible mantissa of magnitude less than 10 that includes at least
+// one digit both before and after the decimal point, and the shortest
+// possible non-empty exponent.
 //
 // String values encode as JSON strings coerced to valid UTF-8,
-// replacing invalid bytes with the Unicode replacement rune.
-// The angle brackets "<" and ">" are escaped to "\u003c" and "\u003e"
-// to keep some browsers from misinterpreting JSON output as HTML.
-// Ampersand "&" is also escaped to "\u0026" for the same reason.
+// replacing invalid bytes with U+FFFD REPLACEMENT CHARACTER. U+2028
+// LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR (valid in JSON strings
+// but invalid in _JavaScript_ strings) are *not* escaped. Control
+// characters U+0000 through U+001F are replaced with their shortest
+// escape sequence, 4 lowercase hex characters except for the following:
+//   - \b U+0008 BACKSPACE
+//   - \t U+0009 CHARACTER TABULATION ("tab")
+//   - \n U+000A LINE FEED ("newline")
+//   - \f U+000C FORM FEED
+//   - \r U+000D CARRIAGE RETURN
 //
 // Array and slice values encode as JSON arrays, except that
 // []byte encodes as a base64-encoded string, and a nil slice
@@ -298,7 +320,7 @@ func typeEncoder(t reflect.Type) encoderFunc {
 }
 
 var (
-	marshalerType     = reflect.TypeOf(new(Marshaler)).Elem()
+	marshalerType     = reflect.TypeOf(new(json.Marshaler)).Elem()
 	textMarshalerType = reflect.TypeOf(new(encoding.TextMarshaler)).Elem()
 )
 
@@ -362,11 +384,20 @@ func marshalerEncoder(e *encodeState, v reflect.Value, quoted bool) {
 		e.WriteString("null")
 		return
 	}
-	m := v.Interface().(Marshaler)
+	m := v.Interface().(json.Marshaler)
 	b, err := m.MarshalJSON()
+
+	// Remarshal JSON, checking validity.
+	var data interface{}
+	var jsonBlob []byte
 	if err == nil {
-		// copy JSON into buffer, checking validity.
-		err = compact(&e.Buffer, b, true)
+		err = json.Unmarshal(b, &data)
+	}
+	if err == nil {
+		jsonBlob, err = Marshal(data)
+	}
+	if err == nil {
+		e.Buffer.Write(jsonBlob)
 	}
 	if err != nil {
 		e.error(&MarshalerError{v.Type(), err})
@@ -379,11 +410,20 @@ func addrMarshalerEncoder(e *encodeState, v reflect.Value, quoted bool) {
 		e.WriteString("null")
 		return
 	}
-	m := va.Interface().(Marshaler)
+	m := va.Interface().(json.Marshaler)
 	b, err := m.MarshalJSON()
+
+	// Remarshal JSON, checking validity.
+	var data interface{}
+	var jsonBlob []byte
 	if err == nil {
-		// copy JSON into buffer, checking validity.
-		err = compact(&e.Buffer, b, true)
+		err = json.Unmarshal(b, &data)
+	}
+	if err == nil {
+		jsonBlob, err = Marshal(data)
+	}
+	if err == nil {
+		e.Buffer.Write(jsonBlob)
 	}
 	if err != nil {
 		e.error(&MarshalerError{v.Type(), err})
@@ -431,14 +471,39 @@ func boolEncoder(e *encodeState, v reflect.Value, quoted bool) {
 	}
 }
 
+func normalizeInteger(e *encodeState, stringBytes []byte) {
+	// sign (negative only)
+	if stringBytes[0] == '-' {
+		e.WriteByte('-')
+		stringBytes = stringBytes[1:]
+	}
+
+	// mantissa integer portion (single digit)
+	e.WriteByte(stringBytes[0])
+	e.WriteByte('.')
+
+	// mantissa fractional portion
+	exp := len(stringBytes) - 1
+	if exp == 0 {
+		e.WriteByte('0')
+	} else {
+		e.Write(stringBytes[1:])
+	}
+
+	// exponent
+	e.WriteByte('E')
+	stringBytes = strconv.AppendInt(e.scratch[:0], int64(exp), 10)
+	e.Write(stringBytes)
+}
+
 func intEncoder(e *encodeState, v reflect.Value, quoted bool) {
 	b := strconv.AppendInt(e.scratch[:0], v.Int(), 10)
 	if quoted {
 		e.WriteByte('"')
-	}
-	e.Write(b)
-	if quoted {
+		e.Write(b)
 		e.WriteByte('"')
+	} else {
+		normalizeInteger(e, b)
 	}
 }
 
@@ -446,27 +511,48 @@ func uintEncoder(e *encodeState, v reflect.Value, quoted bool) {
 	b := strconv.AppendUint(e.scratch[:0], v.Uint(), 10)
 	if quoted {
 		e.WriteByte('"')
-	}
-	e.Write(b)
-	if quoted {
+		e.Write(b)
 		e.WriteByte('"')
+	} else {
+		normalizeInteger(e, b)
 	}
 }
 
 type floatEncoder int // number of bits
+
+// Force capital-E exponent, remove + signs and leading zeroes
+var expNormalizer = regexp.MustCompile("(?:E(?:[+]0*|(-|)0+)|e(?:[+]|(-|))0*)([0-9])")
+var expNormalizerReplacement = "E$1$2$3"
 
 func (bits floatEncoder) encode(e *encodeState, v reflect.Value, quoted bool) {
 	f := v.Float()
 	if math.IsInf(f, 0) || math.IsNaN(f) {
 		e.error(&UnsupportedValueError{v, strconv.FormatFloat(f, 'g', -1, int(bits))})
 	}
-	b := strconv.AppendFloat(e.scratch[:0], f, 'g', -1, int(bits))
+	b := strconv.AppendFloat(e.scratch[:0], f, 'E', -1, int(bits))
 	if quoted {
 		e.WriteByte('"')
-	}
-	e.Write(b)
-	if quoted {
+		e.Write(b)
 		e.WriteByte('"')
+	} else {
+		s := expNormalizer.ReplaceAllString(string(b), expNormalizerReplacement)
+		b = []byte(s)
+
+		// sign (negative only)
+		if b[0] == '-' {
+			e.WriteByte('-')
+			b = b[1:]
+		}
+
+		// force mantissa fractional portion
+		if b[1] == '.' {
+			e.Write(b)
+		} else {
+			e.WriteByte(b[0])
+			e.WriteByte('.')
+			e.WriteByte('0')
+			e.Write(b[1:])
+		}
 	}
 }
 
@@ -475,16 +561,55 @@ var (
 	float64Encoder = (floatEncoder(64)).encode
 )
 
+// Remove trailing zeroes in the fractional portion of the mantissa
+var insignificantZeroes = regexp.MustCompile("([0-9])0+([Ee]|$)")
+var insignificantZeroesReplacement = "$1$2"
+
 func stringEncoder(e *encodeState, v reflect.Value, quoted bool) {
 	if v.Type() == numberType {
 		numStr := v.String()
-		// In Go1.5 the empty string encodes to "0", while this is not a valid number literal
-		// we keep compatibility so check validity after this.
-		if numStr == "" {
-			numStr = "0" // Number's zero-val
-		}
 		if !isValidNumber(numStr) {
 			e.error(fmt.Errorf("canonicaljson: invalid number literal %q", numStr))
+		}
+
+		// normalize
+		//   - exponent presence/case/sign/leading zeroes
+		numStr = expNormalizer.ReplaceAllString(numStr, expNormalizerReplacement)
+		expPos := strings.IndexByte(numStr, 'E')
+		if expPos == -1 {
+			expPos = len(numStr)
+			numStr += "E0"
+		}
+		//   - mantissa decimal point
+		pointPos := strings.IndexByte(numStr, '.')
+		if pointPos == -1 {
+			numStr = numStr[0:expPos] + ".0" + numStr[expPos:]
+			pointPos = expPos
+			expPos += 2
+		}
+		//   - mantissa magnitude (less than 10) and zeroes
+		nPos := 0
+		if numStr[0] == '-' {
+			nPos = 1
+		}
+		if pointPos == nPos+1 {
+			numStr = insignificantZeroes.ReplaceAllString(numStr, insignificantZeroesReplacement)
+		} else {
+			exp, err := strconv.ParseInt(numStr[expPos+1:], 10, 64)
+			if err != nil {
+				e.error(err)
+			}
+			numStr = "" +
+				// first digit, optionally preceded by a negative sign
+				numStr[0:nPos+1] +
+				// decimal point
+				"." +
+				// remaining significant digits, excluding the old decimal point
+				insignificantZeroes.ReplaceAllString(
+					numStr[nPos+1:pointPos]+numStr[pointPos+1:expPos],
+					insignificantZeroesReplacement) +
+				// exponent, increased by the number of places the decimal point moved
+				"E" + string(int(exp)+pointPos-(nPos+1))
 		}
 		e.WriteString(numStr)
 		return
@@ -739,32 +864,30 @@ func (e *encodeState) string(s string) int {
 	start := 0
 	for i := 0; i < len(s); {
 		if b := s[i]; b < utf8.RuneSelf {
-			if 0x20 <= b && b != '\\' && b != '"' && b != '<' && b != '>' && b != '&' {
+			if 0x20 <= b && b != '\\' && b != '"' {
 				i++
 				continue
 			}
 			if start < i {
 				e.WriteString(s[start:i])
 			}
+			e.WriteByte('\\')
 			switch b {
 			case '\\', '"':
-				e.WriteByte('\\')
 				e.WriteByte(b)
 			case '\n':
-				e.WriteByte('\\')
 				e.WriteByte('n')
 			case '\r':
-				e.WriteByte('\\')
 				e.WriteByte('r')
 			case '\t':
-				e.WriteByte('\\')
 				e.WriteByte('t')
+			case '\x08': // \b
+				e.WriteByte('b')
+			case '\x0c': // \f
+				e.WriteByte('f')
 			default:
-				// This encodes bytes < 0x20 except for \n and \r,
-				// as well as <, > and &. The latter are escaped because they
-				// can lead to security holes when user-controlled strings
-				// are rendered into JSON and served to some browsers.
-				e.WriteString(`\u00`)
+				// This encodes other bytes < 0x20 as \u00xx.
+				e.WriteString("u00")
 				e.WriteByte(hex[b>>4])
 				e.WriteByte(hex[b&0xF])
 			}
@@ -778,23 +901,6 @@ func (e *encodeState) string(s string) int {
 				e.WriteString(s[start:i])
 			}
 			e.WriteString(`\ufffd`)
-			i += size
-			start = i
-			continue
-		}
-		// U+2028 is LINE SEPARATOR.
-		// U+2029 is PARAGRAPH SEPARATOR.
-		// They are both technically valid characters in JSON strings,
-		// but don't work in JSONP, which has to be evaluated as JavaScript,
-		// and can lead to security holes there. It is valid JSON to
-		// escape them, so we do so unconditionally.
-		// See http://timelessrepo.com/json-isnt-a-javascript-subset for discussion.
-		if c == '\u2028' || c == '\u2029' {
-			if start < i {
-				e.WriteString(s[start:i])
-			}
-			e.WriteString(`\u202`)
-			e.WriteByte(hex[c&0xF])
 			i += size
 			start = i
 			continue
@@ -815,32 +921,30 @@ func (e *encodeState) stringBytes(s []byte) int {
 	start := 0
 	for i := 0; i < len(s); {
 		if b := s[i]; b < utf8.RuneSelf {
-			if 0x20 <= b && b != '\\' && b != '"' && b != '<' && b != '>' && b != '&' {
+			if 0x20 <= b && b != '\\' && b != '"' {
 				i++
 				continue
 			}
 			if start < i {
 				e.Write(s[start:i])
 			}
+			e.WriteByte('\\')
 			switch b {
 			case '\\', '"':
-				e.WriteByte('\\')
 				e.WriteByte(b)
 			case '\n':
-				e.WriteByte('\\')
 				e.WriteByte('n')
 			case '\r':
-				e.WriteByte('\\')
 				e.WriteByte('r')
 			case '\t':
-				e.WriteByte('\\')
 				e.WriteByte('t')
+			case '\x08': // \b
+				e.WriteByte('b')
+			case '\x0c': // \f
+				e.WriteByte('f')
 			default:
-				// This encodes bytes < 0x20 except for \n and \r,
-				// as well as <, >, and &. The latter are escaped because they
-				// can lead to security holes when user-controlled strings
-				// are rendered into JSON and served to some browsers.
-				e.WriteString(`\u00`)
+				// This encodes other bytes < 0x20 as \u00xx.
+				e.WriteString("u00")
 				e.WriteByte(hex[b>>4])
 				e.WriteByte(hex[b&0xF])
 			}
@@ -854,23 +958,6 @@ func (e *encodeState) stringBytes(s []byte) int {
 				e.Write(s[start:i])
 			}
 			e.WriteString(`\ufffd`)
-			i += size
-			start = i
-			continue
-		}
-		// U+2028 is LINE SEPARATOR.
-		// U+2029 is PARAGRAPH SEPARATOR.
-		// They are both technically valid characters in JSON strings,
-		// but don't work in JSONP, which has to be evaluated as JavaScript,
-		// and can lead to security holes there. It is valid JSON to
-		// escape them, so we do so unconditionally.
-		// See http://timelessrepo.com/json-isnt-a-javascript-subset for discussion.
-		if c == '\u2028' || c == '\u2029' {
-			if start < i {
-				e.Write(s[start:i])
-			}
-			e.WriteString(`\u202`)
-			e.WriteByte(hex[c&0xF])
 			i += size
 			start = i
 			continue
@@ -1072,10 +1159,7 @@ func typeFields(t reflect.Type) []field {
 		}
 	}
 
-	fields = out
-	sort.Sort(byIndex(fields))
-
-	return fields
+	return out
 }
 
 // dominantField looks through the fields, all of which are known to

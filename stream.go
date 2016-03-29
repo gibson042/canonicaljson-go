@@ -5,6 +5,7 @@
 package canonicaljson
 
 import (
+	"encoding/json"
 	"io"
 )
 
@@ -59,7 +60,7 @@ func (enc *Encoder) Encode(v interface{}) error {
 }
 
 // RawMessage is a raw encoded JSON object.
-// It implements Marshaler and can
+// It implements json.Marshaler and can
 // be used to precompute a JSON encoding.
 type RawMessage []byte
 
@@ -68,7 +69,7 @@ func (m *RawMessage) MarshalJSON() ([]byte, error) {
 	return *m, nil
 }
 
-var _ Marshaler = (*RawMessage)(nil)
+var _ json.Marshaler = (*RawMessage)(nil)
 
 // A Token holds a value of one of these types:
 //

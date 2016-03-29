@@ -24,14 +24,14 @@ var streamTest = []interface{}{
 	3.14, // another value to make sure something can follow map
 }
 
-var streamEncoded = `0.1
+var streamEncoded = `1.0E-1
 "hello"
 null
 true
 false
 ["a","b","c"]
 {"ß":"long s","K":"Kelvin"}
-3.14
+3.14E0
 `
 
 func TestEncoder(t *testing.T) {
@@ -73,7 +73,7 @@ func TestRawMessage(t *testing.T) {
 		Y  float32
 	}
 	const raw = `["\u0056",null]`
-	const msg = `{"X":0.1,"Id":["\u0056",null],"Y":0.2}`
+	const msg = `{"Id":["V",null],"X":1.0E-1,"Y":2.0E-1}`
 	data.X = 0.1
 	data.Y = 0.2
 	id := RawMessage(raw)
@@ -95,7 +95,7 @@ func TestNullRawMessage(t *testing.T) {
 		Y  float32
 	}
 	data.Id = new(RawMessage)
-	const msg = `{"X":0.1,"Id":null,"Y":0.2}`
+	const msg = `{"Id":null,"X":1.0E-1,"Y":2.0E-1}`
 	err := json.Unmarshal([]byte(msg), &data)
 	if err != nil {
 		t.Fatalf("Unmarshal: %v", err)
