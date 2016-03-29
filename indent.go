@@ -6,39 +6,6 @@ package canonicaljson
 
 import "bytes"
 
-// Compact appends to dst the JSON-encoded src with
-// insignificant space characters elided.
-func Compact(dst *bytes.Buffer, src []byte) error {
-	return compact(dst, src, false)
-}
-
-func compact(dst *bytes.Buffer, src []byte, escape bool) error {
-	origLen := dst.Len()
-	var scan scanner
-	scan.reset()
-	start := 0
-	for i, c := range src {
-		v := scan.step(&scan, c)
-		if v >= scanSkipSpace {
-			if v == scanError {
-				break
-			}
-			if start < i {
-				dst.Write(src[start:i])
-			}
-			start = i + 1
-		}
-	}
-	if scan.eof() == scanError {
-		dst.Truncate(origLen)
-		return scan.err
-	}
-	if start < len(src) {
-		dst.Write(src[start:])
-	}
-	return nil
-}
-
 func newline(dst *bytes.Buffer, prefix, indent string, depth int) {
 	dst.WriteByte('\n')
 	dst.WriteString(prefix)
@@ -47,7 +14,7 @@ func newline(dst *bytes.Buffer, prefix, indent string, depth int) {
 	}
 }
 
-// Indent appends to dst an indented form of the JSON-encoded src.
+// addIndentation appends to dst an indented form of the JSON-encoded src.
 // Each element in a JSON object or array begins on a new,
 // indented line beginning with prefix followed by one or more
 // copies of indent according to the indentation nesting.
@@ -58,7 +25,7 @@ func newline(dst *bytes.Buffer, prefix, indent string, depth int) {
 // at the end of src are preserved and copied to dst.
 // For example, if src has no trailing spaces, neither will dst;
 // if src ends in a trailing newline, so will dst.
-func Indent(dst *bytes.Buffer, src []byte, prefix, indent string) error {
+func addIndentation(dst *bytes.Buffer, src []byte, prefix, indent string) error {
 	origLen := dst.Len()
 	var scan scanner
 	scan.reset()

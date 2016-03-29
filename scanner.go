@@ -8,7 +8,7 @@ package canonicaljson
 // Just about at the limit of what is reasonable to write by hand.
 // Some parts are a bit tedious, but overall it nicely factors out the
 // otherwise common code from the multiple scanning functions
-// in this package (Compact, Indent, checkValid, nextValue, etc).
+// in this package (checkValid, nextValue, etc).
 //
 // This file starts with two simple examples using the scanner
 // before diving into the scanner itself.

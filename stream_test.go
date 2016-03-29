@@ -202,3 +202,23 @@ var tokenStreamCases []tokenStreamCase = []tokenStreamCase{
 		decodeThis{&SyntaxError{"expected colon after object key", 0}},
 	}},
 }
+
+func diff(t *testing.T, a, b []byte) {
+	for i := 0; ; i++ {
+		if i >= len(a) || i >= len(b) || a[i] != b[i] {
+			j := i - 10
+			if j < 0 {
+				j = 0
+			}
+			t.Errorf("diverge at %d: «%s» vs «%s»", i, trim(a[j:]), trim(b[j:]))
+			return
+		}
+	}
+}
+
+func trim(b []byte) []byte {
+	if len(b) > 20 {
+		return b[0:20]
+	}
+	return b
+}

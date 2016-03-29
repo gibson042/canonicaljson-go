@@ -162,14 +162,14 @@ func Marshal(v interface{}) ([]byte, error) {
 	return e.Bytes(), nil
 }
 
-// MarshalIndent is like Marshal but applies Indent to format the output.
+// MarshalIndent is like Marshal, but adds whitespace for more readable output.
 func MarshalIndent(v interface{}, prefix, indent string) ([]byte, error) {
 	b, err := Marshal(v)
 	if err != nil {
 		return nil, err
 	}
 	var buf bytes.Buffer
-	err = Indent(&buf, b, prefix, indent)
+	err = addIndentation(&buf, b, prefix, indent)
 	if err != nil {
 		return nil, err
 	}
