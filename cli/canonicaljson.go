@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"github.com/gibson042/canonicaljson-go"
 	"io/ioutil"
 	"log"
@@ -16,21 +17,21 @@ func main() {
 		srcFiles = []string{"-"}
 	}
 
-	encoder := canonicaljson.NewEncoder(os.Stdout)
 	for _, srcFile := range srcFiles {
 		var data interface{}
 		var decoder *json.Decoder
 		if srcFile == "-" {
 			decoder = json.NewDecoder(os.Stdin)
 		}
-		for srcFile != "" && (srcFile != "-" || decoder.More()) {
+		proceed := true
+		for proceed && (srcFile != "-" || decoder.More()) {
 			if srcFile == "-" {
 				if err := decoder.Decode(&data); err != nil {
 					log.Fatal(err)
 				}
 			} else {
+				proceed = false
 				src, err := ioutil.ReadFile(srcFile)
-				srcFile = ""
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -39,8 +40,10 @@ func main() {
 				}
 			}
 
-			if err := encoder.Encode(&data); err != nil {
+			if result, err := canonicaljson.Marshal(&data); err != nil {
 				log.Fatal(err)
+			} else {
+				fmt.Printf("%s", string(result))
 			}
 		}
 	}
