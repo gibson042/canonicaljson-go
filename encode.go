@@ -525,7 +525,8 @@ var expNormalizer = regexp.MustCompile("(?:E(?:[+]0*|(-|)0+)|e(?:[+]|(-|))0*)([0
 var expNormalizerReplacement = "E$1$2$3"
 
 func (bits floatEncoder) encode(e *encodeState, v reflect.Value, quoted bool) {
-	f := v.Float()
+	// Get a float value *not* equal to negative zero.
+	f := v.Float() + 0
 	if math.IsInf(f, 0) || math.IsNaN(f) {
 		e.error(&UnsupportedValueError{v, strconv.FormatFloat(f, 'g', -1, int(bits))})
 	}
