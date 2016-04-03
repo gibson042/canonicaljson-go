@@ -10,8 +10,8 @@
 // ). Notable differences:
 //   - Object keys are sorted lexicographically by codepoint
 //   - JSON numbers are always represented in capital-E exponential
-//     notation with mantissa in (-10, 10) and no insignificant signs or
-//     zeroes beyond those required to force a decimal point.
+//     notation with significand in (-10, 10) and no insignificant signs
+//     or zeroes beyond those required to force a decimal point.
 //   - JSON strings are represented in UTF-8 with minimal byte length,
 //     using escapes only when necessary for validity and Unicode
 //     escapes (lowercase hex) only when there is no shorter option.
@@ -53,7 +53,7 @@ import (
 //
 // Floating point, integer, and Number values encode as JSON numbers,
 // represented in capital-E exponential notation with the shortest
-// possible mantissa of magnitude less than 10 that includes at least
+// possible significand of magnitude less than 10 that includes at least
 // one digit both before and after the decimal point, and the shortest
 // possible non-empty exponent.
 //
@@ -478,11 +478,11 @@ func normalizeInteger(e *encodeState, stringBytes []byte) {
 		stringBytes = stringBytes[1:]
 	}
 
-	// mantissa integer portion (single digit)
+	// significand integer portion (single digit)
 	e.WriteByte(stringBytes[0])
 	e.WriteByte('.')
 
-	// mantissa fractional portion
+	// significand fractional portion
 	exp := len(stringBytes) - 1
 	if exp == 0 {
 		e.WriteByte('0')
@@ -545,7 +545,7 @@ func (bits floatEncoder) encode(e *encodeState, v reflect.Value, quoted bool) {
 			b = b[1:]
 		}
 
-		// force mantissa fractional portion
+		// force significand fractional portion
 		if b[1] == '.' {
 			e.Write(b)
 		} else {
@@ -562,7 +562,7 @@ var (
 	float64Encoder = (floatEncoder(64)).encode
 )
 
-// Remove trailing zeroes in the fractional portion of the mantissa
+// Remove trailing zeroes in the fractional portion of the significand
 var insignificantZeroes = regexp.MustCompile("([0-9])0+([Ee]|$)")
 var insignificantZeroesReplacement = "$1$2"
 
@@ -581,14 +581,14 @@ func stringEncoder(e *encodeState, v reflect.Value, quoted bool) {
 			expPos = len(numStr)
 			numStr += "E0"
 		}
-		//   - mantissa decimal point
+		//   - significand decimal point
 		pointPos := strings.IndexByte(numStr, '.')
 		if pointPos == -1 {
 			numStr = numStr[0:expPos] + ".0" + numStr[expPos:]
 			pointPos = expPos
 			expPos += 2
 		}
-		//   - mantissa magnitude (less than 10) and zeroes
+		//   - significand magnitude (less than 10) and zeroes
 		nPos := 0
 		if numStr[0] == '-' {
 			nPos = 1

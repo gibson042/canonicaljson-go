@@ -455,7 +455,7 @@ func stateDot0(s *scanner, c byte) int {
 	return stateEndValue(s, c)
 }
 
-// stateE is the state after reading the mantissa and e in a number,
+// stateE is the state after reading the significand and e in a number,
 // such as after reading `314e` or `0.314e`.
 func stateE(s *scanner, c byte) int {
 	if c == '+' || c == '-' {
@@ -465,7 +465,7 @@ func stateE(s *scanner, c byte) int {
 	return stateESign(s, c)
 }
 
-// stateESign is the state after reading the mantissa, e, and sign in a number,
+// stateESign is the state after reading the significand, e, and sign in a number,
 // such as after reading `314e-` or `0.314e+`.
 func stateESign(s *scanner, c byte) int {
 	if '0' <= c && c <= '9' {
@@ -475,7 +475,7 @@ func stateESign(s *scanner, c byte) int {
 	return s.error(c, "in exponent of numeric literal")
 }
 
-// stateE0 is the state after reading the mantissa, e, optional sign,
+// stateE0 is the state after reading the significand, e, optional sign,
 // and at least one digit of the exponent in a number,
 // such as after reading `314e-2` or `0.314e+1` or `3.14e0`.
 func stateE0(s *scanner, c byte) int {
