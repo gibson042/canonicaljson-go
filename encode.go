@@ -9,7 +9,7 @@
 // golang/go@9d77ad8d34ce56e182adc30cd21af50a4b00932c:src/encoding/json
 // ). Notable differences:
 //   - Object keys are sorted lexicographically by codepoint
-//   - JSON numbers are always represented in capital-E exponential
+//   - Non-integer JSON numbers are represented in capital-E exponential
 //     notation with significand in (-10, 10) and no insignificant signs
 //     or zeroes beyond those required to force a decimal point.
 //   - JSON strings are represented in UTF-8 with minimal byte length,
@@ -51,11 +51,12 @@ import (
 //
 // Boolean values encode as JSON booleans.
 //
-// Floating point, integer, and Number values encode as JSON numbers,
-// represented in capital-E exponential notation with the shortest
-// possible significand of magnitude less than 10 that includes at least
-// one digit both before and after the decimal point, and the shortest
-// possible non-empty exponent.
+// Floating point, integer, and Number values encode as JSON numbers.
+// Non-fractional values become sequences of digits without leading
+// spaces; fractional values are represented in capital-E exponential
+// notation with the shortest possible significand of magnitude less
+// than 10 that includes at least one digit both before and after the
+// decimal point, and the shortest possible non-empty exponent.
 //
 // String values encode as JSON strings coerced to valid UTF-8,
 // replacing invalid bytes with U+FFFD REPLACEMENT CHARACTER. U+2028
@@ -471,31 +472,6 @@ func boolEncoder(e *encodeState, v reflect.Value, quoted bool) {
 	}
 }
 
-func normalizeInteger(e *encodeState, stringBytes []byte) {
-	// sign (negative only)
-	if stringBytes[0] == '-' {
-		e.WriteByte('-')
-		stringBytes = stringBytes[1:]
-	}
-
-	// significand integer portion (single digit)
-	e.WriteByte(stringBytes[0])
-	e.WriteByte('.')
-
-	// significand fractional portion
-	exp := len(stringBytes) - 1
-	if exp == 0 {
-		e.WriteByte('0')
-	} else {
-		e.Write(stringBytes[1:])
-	}
-
-	// exponent
-	e.WriteByte('E')
-	stringBytes = strconv.AppendInt(e.scratch[:0], int64(exp), 10)
-	e.Write(stringBytes)
-}
-
 func intEncoder(e *encodeState, v reflect.Value, quoted bool) {
 	b := strconv.AppendInt(e.scratch[:0], v.Int(), 10)
 	if quoted {
@@ -503,7 +479,7 @@ func intEncoder(e *encodeState, v reflect.Value, quoted bool) {
 		e.Write(b)
 		e.WriteByte('"')
 	} else {
-		normalizeInteger(e, b)
+		e.Write(b)
 	}
 }
 
@@ -514,15 +490,99 @@ func uintEncoder(e *encodeState, v reflect.Value, quoted bool) {
 		e.Write(b)
 		e.WriteByte('"')
 	} else {
-		normalizeInteger(e, b)
+		e.Write(b)
 	}
 }
-
-type floatEncoder int // number of bits
 
 // Force capital-E exponent, remove + signs and leading zeroes
 var expNormalizer = regexp.MustCompile("(?:E(?:[+]0*|(-|)0+)|e(?:[+]|(-|))0*)([0-9])")
 var expNormalizerReplacement = "E$1$2$3"
+
+// Remove trailing zeroes in the fractional portion of the significand
+var insignificantZeroes = regexp.MustCompile("([0-9])0+(E)")
+var insignificantZeroesReplacement = "$1$2"
+
+// normalizeNumber normalizes a numeric string and writes the result on its encoder.
+func normalizeNumber(e *encodeState, stringBytes []byte) {
+	s := expNormalizer.ReplaceAllString(string(stringBytes), expNormalizerReplacement)
+
+	// sign (negative only)
+	if s[0] == '-' {
+		e.WriteByte('-')
+		s = s[1:]
+	}
+
+	// address exponent
+	exp := 0
+	expPos := strings.LastIndexByte(s, 'E')
+	if expPos == -1 {
+		expPos = len(s)
+	} else {
+		var err error
+		exp, err = strconv.Atoi(s[expPos+1:])
+		if err != nil {
+			e.error(err)
+		}
+	}
+
+	// address significand decimal point
+	digits := expPos
+	pointPos := strings.IndexByte(s, '.')
+	if pointPos != -1 {
+		digits -= 1
+	}
+
+	// write integers as integers
+	if digits <= exp+1 {
+		if pointPos != -1 {
+			e.WriteString(s[:pointPos])
+			e.WriteString(s[pointPos+1 : expPos])
+		} else {
+			e.WriteString(s[:expPos])
+		}
+		// fill in significant zeroes
+		if digits < exp+1 {
+			e.WriteString(strings.Repeat("0", exp+1-digits))
+		}
+
+	} else {
+		// force exponential format
+		if expPos == len(s) {
+			s += "E0"
+		}
+
+		// force significand decimal point
+		if pointPos == -1 {
+			s = s[:expPos] + ".0" + s[expPos:]
+			if expPos != 1 {
+				pointPos = expPos
+			}
+			expPos += 2
+		}
+
+		// force significand magnitude (less than 10) and remove excess zeroes
+		if pointPos == 1 {
+			s = insignificantZeroes.ReplaceAllString(s, insignificantZeroesReplacement)
+		} else if pointPos != -1 {
+			s = "" +
+				// first digit
+				s[0:1] +
+				// decimal point
+				"." +
+				// remaining significant digits, excluding the old decimal point
+				insignificantZeroes.ReplaceAllString(
+					s[1:pointPos]+s[pointPos+1:expPos],
+					insignificantZeroesReplacement) +
+				// exponent, increased by the number of places the decimal point moved
+				"E" + string(exp+pointPos-1)
+		}
+
+		// output
+		e.WriteString(s)
+	}
+}
+
+type floatEncoder int // number of bits
 
 func (bits floatEncoder) encode(e *encodeState, v reflect.Value, quoted bool) {
 	// Get a float value *not* equal to negative zero.
@@ -536,24 +596,7 @@ func (bits floatEncoder) encode(e *encodeState, v reflect.Value, quoted bool) {
 		e.Write(b)
 		e.WriteByte('"')
 	} else {
-		s := expNormalizer.ReplaceAllString(string(b), expNormalizerReplacement)
-		b = []byte(s)
-
-		// sign (negative only)
-		if b[0] == '-' {
-			e.WriteByte('-')
-			b = b[1:]
-		}
-
-		// force significand fractional portion
-		if b[1] == '.' {
-			e.Write(b)
-		} else {
-			e.WriteByte(b[0])
-			e.WriteByte('.')
-			e.WriteByte('0')
-			e.Write(b[1:])
-		}
+		normalizeNumber(e, b)
 	}
 }
 
@@ -562,57 +605,13 @@ var (
 	float64Encoder = (floatEncoder(64)).encode
 )
 
-// Remove trailing zeroes in the fractional portion of the significand
-var insignificantZeroes = regexp.MustCompile("([0-9])0+(E)")
-var insignificantZeroesReplacement = "$1$2"
-
 func stringEncoder(e *encodeState, v reflect.Value, quoted bool) {
 	if v.Type() == numberType {
 		numStr := v.String()
 		if !isValidNumber(numStr) {
 			e.error(fmt.Errorf("canonicaljson: invalid number literal %q", numStr))
 		}
-
-		// normalize
-		//   - exponent presence/case/sign/leading zeroes
-		numStr = expNormalizer.ReplaceAllString(numStr, expNormalizerReplacement)
-		expPos := strings.IndexByte(numStr, 'E')
-		if expPos == -1 {
-			expPos = len(numStr)
-			numStr += "E0"
-		}
-		//   - significand decimal point
-		pointPos := strings.IndexByte(numStr, '.')
-		if pointPos == -1 {
-			numStr = numStr[0:expPos] + ".0" + numStr[expPos:]
-			pointPos = expPos
-			expPos += 2
-		}
-		//   - significand magnitude (less than 10) and zeroes
-		nPos := 0
-		if numStr[0] == '-' {
-			nPos = 1
-		}
-		if pointPos == nPos+1 {
-			numStr = insignificantZeroes.ReplaceAllString(numStr, insignificantZeroesReplacement)
-		} else {
-			exp, err := strconv.ParseInt(numStr[expPos+1:], 10, 64)
-			if err != nil {
-				e.error(err)
-			}
-			numStr = "" +
-				// first digit, optionally preceded by a negative sign
-				numStr[0:nPos+1] +
-				// decimal point
-				"." +
-				// remaining significant digits, excluding the old decimal point
-				insignificantZeroes.ReplaceAllString(
-					numStr[nPos+1:pointPos]+numStr[pointPos+1:expPos],
-					insignificantZeroesReplacement) +
-				// exponent, increased by the number of places the decimal point moved
-				"E" + string(int(exp)+pointPos-(nPos+1))
-		}
-		e.WriteString(numStr)
+		normalizeNumber(e, []byte(numStr))
 		return
 	}
 	if quoted {
