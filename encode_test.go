@@ -42,14 +42,14 @@ type Optionals struct {
 
 var optionalsExpected = `{
  "br": false,
- "fr": 0.0E0,
+ "fr": 0,
  "mr": {},
- "omitempty": 0.0E0,
+ "omitempty": 0,
  "slr": null,
  "sr": "",
  "sto": {},
  "str": {},
- "ur": 0.0E0
+ "ur": 0
 }`
 
 func TestOmitEmpty(t *testing.T) {
@@ -259,7 +259,7 @@ type MyStruct struct {
 func TestAnonymousNonstruct(t *testing.T) {
 	var i IntType = 11
 	a := MyStruct{i}
-	const want = `{"IntType":1.1E1}`
+	const want = `{"IntType":11}`
 
 	b, err := Marshal(a)
 	if err != nil {
@@ -313,7 +313,7 @@ func TestEmbeddedBug(t *testing.T) {
 	if err != nil {
 		t.Fatal("Marshal:", err)
 	}
-	want = `{"A":2.3E1}`
+	want = `{"A":23}`
 	got = string(b)
 	if got != want {
 		t.Fatalf("Marshal: got %s want %s", got, want)

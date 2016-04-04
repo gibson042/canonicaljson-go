@@ -17,27 +17,27 @@ type example struct {
 }
 
 var examples = []example{
-	{`1.0E0`, `1.0E0`},
+	{`1`, `1`},
 	{`{}`, `{}`},
 	{`[]`, `[]`},
-	{`{"":2.0E0}`, "{\n\t\"\": 2.0E0\n}"},
-	{`[3.0E0]`, "[\n\t3.0E0\n]"},
-	{`[1.0E0,2.0E0,3.0E0]`, "[\n\t1.0E0,\n\t2.0E0,\n\t3.0E0\n]"},
-	{`{"x":1.0E0}`, "{\n\t\"x\": 1.0E0\n}"},
+	{`{"":2}`, "{\n\t\"\": 2\n}"},
+	{`[3]`, "[\n\t3\n]"},
+	{`[1,2,3]`, "[\n\t1,\n\t2,\n\t3\n]"},
+	{`{"x":1}`, "{\n\t\"x\": 1\n}"},
 	{ex1, ex1i},
 }
 
-var ex1 = `[true,false,null,"x",1.0E0,1.5E0,0.0E0,-5.0E2]`
+var ex1 = `[true,false,null,"x",1,1.5E0,0,-500]`
 
 var ex1i = `[
 	true,
 	false,
 	null,
 	"x",
-	1.0E0,
+	1,
 	1.5E0,
-	0.0E0,
-	-5.0E2
+	0,
+	-500
 ]`
 
 func TestMarshal(t *testing.T) {
@@ -73,8 +73,8 @@ func TestMarshalSeparators(t *testing.T) {
 	tests := []struct {
 		in, compact string
 	}{
-		{"{\"\u2028\": 1}", "{\"\u2028\":1.0E0}"},
-		{"{\"\u2029\" :2}", "{\"\u2029\":2.0E0}"},
+		{"{\"\u2028\": 1}", "{\"\u2028\":1}"},
+		{"{\"\u2029\" :2}", "{\"\u2029\":2}"},
 	}
 	for _, tt := range tests {
 		var obj interface{}
