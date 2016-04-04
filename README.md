@@ -12,11 +12,11 @@ package canonicaljson
     Package canonicaljson implements canonical serialization of Go objects
     to JSON as specified in "JSON Canonical Form" Internet Draft
     https://tools.ietf.org/html/draft-staykov-hu-json-canonical-form-00 and
-    extended to include shortest-representation normalization of all strings
-    (both keys and values). The provided interface should match that of
-    standard package "encoding/json" (from which it is derived) wherever
-    they overlap (and in fact, this package is essentially a 2016-03-09 fork
-    from
+    updated to include non-exponential integer representation and
+    shortest-representation normalization of all strings (both keys and
+    values). The provided interface should match that of standard package
+    "encoding/json" (from which it is derived) wherever they overlap (and in
+    fact, this package is essentially a 2016-03-09 fork from
     golang/go@9d77ad8d34ce56e182adc30cd21af50a4b00932c:src/encoding/json ).
     Notable differences:
 
