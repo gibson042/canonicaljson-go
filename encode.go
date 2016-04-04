@@ -563,7 +563,7 @@ var (
 )
 
 // Remove trailing zeroes in the fractional portion of the significand
-var insignificantZeroes = regexp.MustCompile("([0-9])0+([Ee]|$)")
+var insignificantZeroes = regexp.MustCompile("([0-9])0+(E)")
 var insignificantZeroesReplacement = "$1$2"
 
 func stringEncoder(e *encodeState, v reflect.Value, quoted bool) {
