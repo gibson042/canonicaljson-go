@@ -1,5 +1,5 @@
 # canonicaljson-go
-Go library for producing JSON in canonical format.
+Go library for producing JSON in canonical format as specified by [http://gibson042.github.io/canonicaljson-spec/](http://gibson042.github.io/canonicaljson-spec/).
 
 Test by invoking `test.sh`.
 
