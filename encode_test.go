@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"math"
 	"reflect"
+	"strconv"
 	"testing"
 	"unicode"
 )
@@ -608,5 +609,74 @@ func TestEncodeKey(t *testing.T) {
 	}
 	if result := string(result); result != namedExpected {
 		t.Errorf(" got: %s\nwant: %s\n", result, namedExpected)
+	}
+}
+
+var floats = map[string][]string{
+	"2.5E-3": []string{
+		"0.025e-1", "0.0250e-1", "0.02500e-1",
+		"0.25e-2", "0.250e-2", "0.2500e-2",
+	},
+	"2.5E-2": []string{
+		"0.025e0", "0.0250e0", "0.02500e0",
+		"0.025", "0.0250", "0.02500",
+		"0.25e-1", "0.250e-1", "0.2500e-1",
+		"2.5e-2", "2.50e-2", "2.500e-2",
+	},
+	"2.5E-1": []string{
+		"0.025e1", "0.0250e1", "0.02500e1",
+		"0.25e0", "0.250e0", "0.2500e0",
+		"0.25", "0.250", "0.2500",
+		"2.5e-1", "2.50e-1", "2.500e-1",
+		"25e-2", "25.0e-2", "25.00e-2",
+	},
+	"2.5E0": []string{
+		"0.025e2", "0.0250e2", "0.02500e2",
+		"0.25e1", "0.250e1", "0.2500e1",
+		"2.5e0", "2.50e0", "2.500e0",
+		"2.5", "2.50", "2.500",
+		"25e-1", "25.0e-1", "25.00e-1",
+		"250e-2", "250.0e-2", "250.00e-2",
+	},
+	"25": []string{
+		"0.25e2", "0.250e2", "0.2500e2",
+		"2.5e1", "2.50e1", "2.500e1",
+		"25e0", "25.0e0", "25.00e0",
+		"25", "25.0", "25.00",
+		"250e-1", "250.0e-1", "250.00e-1",
+	},
+	"250": []string{
+		"2.5e2", "2.50e2", "2.500e2",
+		"25e1", "25.0e1", "25.00e1",
+		"250e0", "250.0e0", "250.00e0",
+		"250", "250.0", "250.00",
+	},
+	"2500": []string{
+		"25e2", "25.0e2", "25.00e2",
+		"250e1", "250.0e1", "250.00e1",
+	},
+}
+
+func TestFloat(t *testing.T) {
+	for expected, inputs := range floats {
+		for _, input := range inputs {
+			inputFloat, _ := strconv.ParseFloat(input, 64)
+			result, err := Marshal(inputFloat)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(result) != expected {
+				t.Errorf(" float(%s)\n got: %s\n want: %s\n", input, result, expected)
+			}
+
+			inputDecimal := json.Number(input)
+			result, err = Marshal(inputDecimal)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(result) != expected {
+				t.Errorf(" json.Number(%s)\n got: %s\n want: %s\n", input, result, expected)
+			}
+		}
 	}
 }
