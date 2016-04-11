@@ -543,22 +543,24 @@ func normalizeNumber(e *encodeState, stringBytes []byte) {
 		significand = s[significantRange[0]:significantRange[1]]
 	}
 
+	// detect integers (i.e., significand fits within exponent)
+	isInt := (exp <= 0 && (effectivePointPos+exp) >= significantRange[1]) ||
+		(exp > 0 && (effectivePointPos+exp+1) >= significantRange[1])
+
+	// effective exponent increases/decreases by excess/deficient significand magnitude
+	if effectivePointPos > 1 {
+		exp += effectivePointPos - 1
+	} else if significantRange[0] > 0 {
+		exp -= significantRange[0] - 1
+	}
+
 	// write result
 	if negative {
 		e.WriteByte('-')
 	}
-	if (exp > 0 && (effectivePointPos+exp+1) >= significantRange[1]) ||
-		(exp <= 0 && (effectivePointPos+exp) >= significantRange[1]) {
-
-		// integer (i.e., significand fits within exponent): render without exponent
+	if isInt {
+		// integer: render without exponent
 		e.WriteString(significand)
-
-		// effective exponent increases/decreases by excess/deficient significand magnitude
-		if effectivePointPos > 1 {
-			exp += effectivePointPos - 1
-		} else if significantRange[0] > 0 {
-			exp -= significantRange[0] - 1
-		}
 		if len(significand) < exp+1 {
 			e.WriteString(strings.Repeat("0", exp+1-len(significand)))
 		}
@@ -566,13 +568,6 @@ func normalizeNumber(e *encodeState, stringBytes []byte) {
 		// non-integer: render minimal significand with decimal point and non-empty exponent
 		if len(significand) == 1 {
 			significand += "0"
-		}
-
-		// effective exponent increases/decreases by excess/deficient significand magnitude
-		if effectivePointPos > 1 {
-			exp += effectivePointPos - 1
-		} else if significantRange[0] > 0 {
-			exp -= significantRange[0] - 1
 		}
 		e.WriteString(significand[:1] + "." + significand[1:] + "E" + strconv.Itoa(exp))
 	}
