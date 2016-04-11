@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gibson042/canonicaljson-go"
-	"io/ioutil"
 	"log"
 	"os"
 )
@@ -20,30 +19,37 @@ func main() {
 	for _, srcFile := range srcFiles {
 		var data interface{}
 		var decoder *json.Decoder
+
 		if srcFile == "-" {
 			decoder = json.NewDecoder(os.Stdin)
+		} else {
+			file, err := os.Open(srcFile)
+			if err != nil {
+				log.Fatal(err)
+			}
+			decoder = json.NewDecoder(file)
 		}
-		proceed := true
-		for proceed && (srcFile != "-" || decoder.More()) {
-			if srcFile == "-" {
-				if err := decoder.Decode(&data); err != nil {
-					log.Fatal(err)
-				}
-			} else {
-				proceed = false
-				src, err := ioutil.ReadFile(srcFile)
-				if err != nil {
-					log.Fatal(err)
-				}
-				if err := json.Unmarshal([]byte(src), &data); err != nil {
-					log.Fatal(err)
-				}
+		// Handle numbers with infinite precision.
+		decoder.UseNumber()
+
+		// Read as many JSON values as possible from standard input.
+		for srcFile != "-" || decoder.More() {
+			if err := decoder.Decode(&data); err != nil {
+				log.Fatal(err)
 			}
 
 			if result, err := canonicaljson.Marshal(&data); err != nil {
 				log.Fatal(err)
 			} else {
 				fmt.Printf("%s", string(result))
+			}
+
+			// Read only a single value from each file.
+			if srcFile != "-" {
+				if decoder.More() {
+					log.Fatal("Trailing data in file: %s\n", srcFile)
+				}
+				break
 			}
 		}
 	}

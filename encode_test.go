@@ -440,9 +440,9 @@ func TestIssue6458(t *testing.T) {
 
 func TestIssue10281(t *testing.T) {
 	type Foo struct {
-		N Number
+		N json.Number
 	}
-	x := Foo{Number(`invalid`)}
+	x := Foo{json.Number(`invalid`)}
 
 	b, err := Marshal(&x)
 	if err == nil {
