@@ -499,21 +499,20 @@ func uintEncoder(e *encodeState, v reflect.Value, quoted bool) {
 var expNormalizer = regexp.MustCompile("(?:E(?:[+]0*|(-|)0+)|e(?:[+]|(-|))0*)([0-9])")
 var expNormalizerReplacement = "E$1$2$3"
 
-// Remove trailing zeroes in the fractional portion of the significand
-var insignificantZeroes = regexp.MustCompile("([0-9])0+(E)")
-var insignificantZeroesReplacement = "$1$2"
+// Find the significant digits in a numeric string
+var significantDigits = regexp.MustCompile(`^(0(?:\.0*|)|)([0-9.]+?)(?:0*\.?0*|)(E|$)`)
 
 // normalizeNumber normalizes a numeric string and writes the result on its encoder.
 func normalizeNumber(e *encodeState, stringBytes []byte) {
 	s := expNormalizer.ReplaceAllString(string(stringBytes), expNormalizerReplacement)
 
-	// sign (negative only)
-	if s[0] == '-' {
-		e.WriteByte('-')
+	// detect negative sign
+	negative := s[0] == '-'
+	if negative {
 		s = s[1:]
 	}
 
-	// address exponent
+	// detect exponent
 	exp := 0
 	expPos := strings.LastIndexByte(s, 'E')
 	if expPos == -1 {
@@ -526,60 +525,56 @@ func normalizeNumber(e *encodeState, stringBytes []byte) {
 		}
 	}
 
-	// address significand decimal point
-	digits := expPos
+	// characterize the significant digits, bailing early on zero
+	significantRange := significantDigits.FindStringSubmatchIndex(s)[4:6]
+	if s[significantRange[0]] == '0' {
+		e.WriteByte('0')
+		return
+	}
 	pointPos := strings.IndexByte(s, '.')
-	if pointPos != -1 {
-		digits -= 1
+	effectivePointPos := pointPos
+	if effectivePointPos == -1 {
+		effectivePointPos = expPos
+	}
+	var significand string
+	if pointPos > significantRange[0] && pointPos < significantRange[1] {
+		significand = s[significantRange[0]:pointPos] + s[pointPos+1:significantRange[1]]
+	} else {
+		significand = s[significantRange[0]:significantRange[1]]
 	}
 
-	// write integers as integers
-	if digits <= exp+1 {
-		if pointPos != -1 {
-			e.WriteString(s[:pointPos])
-			e.WriteString(s[pointPos+1 : expPos])
-		} else {
-			e.WriteString(s[:expPos])
-		}
-		// fill in significant zeroes
-		if digits < exp+1 {
-			e.WriteString(strings.Repeat("0", exp+1-digits))
-		}
+	// write result
+	if negative {
+		e.WriteByte('-')
+	}
+	if (exp > 0 && (effectivePointPos+exp+1) >= significantRange[1]) ||
+		(exp <= 0 && (effectivePointPos+exp) >= significantRange[1]) {
 
+		// integer (i.e., significand fits within exponent): render without exponent
+		e.WriteString(significand)
+
+		// effective exponent increases/decreases by excess/deficient significand magnitude
+		if effectivePointPos > 1 {
+			exp += effectivePointPos - 1
+		} else if significantRange[0] > 0 {
+			exp -= significantRange[0] - 1
+		}
+		if len(significand) < exp+1 {
+			e.WriteString(strings.Repeat("0", exp+1-len(significand)))
+		}
 	} else {
-		// force exponential format
-		if expPos == len(s) {
-			s += "E0"
+		// non-integer: render minimal significand with decimal point and non-empty exponent
+		if len(significand) == 1 {
+			significand += "0"
 		}
 
-		// force significand decimal point
-		if pointPos == -1 {
-			s = s[:expPos] + ".0" + s[expPos:]
-			if expPos != 1 {
-				pointPos = expPos
-			}
-			expPos += 2
+		// effective exponent increases/decreases by excess/deficient significand magnitude
+		if effectivePointPos > 1 {
+			exp += effectivePointPos - 1
+		} else if significantRange[0] > 0 {
+			exp -= significantRange[0] - 1
 		}
-
-		// force significand magnitude (less than 10) and remove excess zeroes
-		if pointPos == 1 {
-			s = insignificantZeroes.ReplaceAllString(s, insignificantZeroesReplacement)
-		} else if pointPos != -1 {
-			s = "" +
-				// first digit
-				s[0:1] +
-				// decimal point
-				"." +
-				// remaining significant digits, excluding the old decimal point
-				insignificantZeroes.ReplaceAllString(
-					s[1:pointPos]+s[pointPos+1:expPos],
-					insignificantZeroesReplacement) +
-				// exponent, increased by the number of places the decimal point moved
-				"E" + string(exp+pointPos-1)
-		}
-
-		// output
-		e.WriteString(s)
+		e.WriteString(significand[:1] + "." + significand[1:] + "E" + strconv.Itoa(exp))
 	}
 }
 
