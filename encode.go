@@ -502,7 +502,7 @@ var expNormalizerReplacement = "E$1$2$3"
 // Find the significant digits in a numeric string
 var significantDigits = regexp.MustCompile(`^(0(?:\.0*|)|)([0-9.]+?)(?:0*\.?0*|)(E|$)`)
 
-// normalizeNumber normalizes a numeric string and writes the result on its encoder.
+// normalizeNumber normalizes a valid JSON numeric string and writes the result on its encoder.
 func normalizeNumber(e *encodeState, stringBytes []byte) {
 	s := expNormalizer.ReplaceAllString(string(stringBytes), expNormalizerReplacement)
 
@@ -525,8 +525,12 @@ func normalizeNumber(e *encodeState, stringBytes []byte) {
 		}
 	}
 
-	// characterize the significant digits, bailing early on zero
-	significantRange := significantDigits.FindStringSubmatchIndex(s)[4:6]
+	// characterize the significant digits, finishing early on zero
+	significantRange := significantDigits.FindStringSubmatchIndex(s)
+	if significantRange == nil {
+		e.error(fmt.Errorf("canonicaljson: no significand in %q", s))
+	}
+	significantRange = significantRange[2:4]
 	if s[significantRange[0]] == '0' {
 		e.WriteByte('0')
 		return
