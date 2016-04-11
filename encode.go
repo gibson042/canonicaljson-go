@@ -500,7 +500,7 @@ var expNormalizer = regexp.MustCompile("(?:E(?:[+]0*|(-|)0+)|e(?:[+]|(-|))0*)([0
 var expNormalizerReplacement = "E$1$2$3"
 
 // Find the significant digits in a numeric string
-var significantDigits = regexp.MustCompile(`^(0(?:\.0*|)|)([0-9.]+?)(?:0*\.?0*|)(E|$)`)
+var significantDigits = regexp.MustCompile(`^(?:0(?:\.0*|)|)([0-9.]+?)(?:0*\.?0*|)(?:E|$)`)
 
 // normalizeNumber normalizes a valid JSON numeric string and writes the result on its encoder.
 func normalizeNumber(e *encodeState, stringBytes []byte) {
