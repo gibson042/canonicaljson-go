@@ -1,9 +1,11 @@
+// Copyright 2016 Richard Gibson. All rights reserved.
+// Copyright 2010 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 // Package canonicaljson implements canonical serialization of Go
-// objects to JSON as specified in "JSON Canonical Form" Internet Draft
-// https://tools.ietf.org/html/draft-staykov-hu-json-canonical-form-00
-// and updated to include non-exponential integer representation and
-// shortest-representation normalization of all strings (both keys and
-// values).
+// objects to canonical-form JSON as specified at
+// https://github.com/gibson042/canonicaljson-spec .
 // The provided interface should match that of standard package
 // "encoding/json" (from which it is derived) wherever they overlap (and
 // in fact, this package is essentially a 2016-03-09 fork from
