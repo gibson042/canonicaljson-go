@@ -1,8 +1,9 @@
+// Copyright 2016 Richard Gibson. All rights reserved.
 // Copyright 2010 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package json
+package canonicaljson
 
 import (
 	"bytes"
@@ -707,10 +708,10 @@ type wrongStringTest struct {
 }
 
 var wrongStringTests = []wrongStringTest{
-	{`{"result":"x"}`, `json: invalid use of ,string struct tag, trying to unmarshal "x" into string`},
-	{`{"result":"foo"}`, `json: invalid use of ,string struct tag, trying to unmarshal "foo" into string`},
-	{`{"result":"123"}`, `json: invalid use of ,string struct tag, trying to unmarshal "123" into string`},
-	{`{"result":123}`, `json: invalid use of ,string struct tag, trying to unmarshal unquoted value into string`},
+	{`{"result":"x"}`, `canonicaljson: invalid use of ,string struct tag, trying to unmarshal "x" into string`},
+	{`{"result":"foo"}`, `canonicaljson: invalid use of ,string struct tag, trying to unmarshal "foo" into string`},
+	{`{"result":"123"}`, `canonicaljson: invalid use of ,string struct tag, trying to unmarshal "123" into string`},
+	{`{"result":123}`, `canonicaljson: invalid use of ,string struct tag, trying to unmarshal unquoted value into string`},
 }
 
 // If people misuse the ,string modifier, the error message should be
@@ -1418,9 +1419,9 @@ var invalidUnmarshalTests = []struct {
 	v    interface{}
 	want string
 }{
-	{nil, "json: Unmarshal(nil)"},
-	{struct{}{}, "json: Unmarshal(non-pointer struct {})"},
-	{(*int)(nil), "json: Unmarshal(nil *int)"},
+	{nil, "canonicaljson: Unmarshal(nil)"},
+	{struct{}{}, "canonicaljson: Unmarshal(non-pointer struct {})"},
+	{(*int)(nil), "canonicaljson: Unmarshal(nil *int)"},
 }
 
 func TestInvalidUnmarshal(t *testing.T) {
@@ -1441,10 +1442,10 @@ var invalidUnmarshalTextTests = []struct {
 	v    interface{}
 	want string
 }{
-	{nil, "json: Unmarshal(nil)"},
-	{struct{}{}, "json: Unmarshal(non-pointer struct {})"},
-	{(*int)(nil), "json: Unmarshal(nil *int)"},
-	{new(net.IP), "json: cannot unmarshal string into Go value of type *net.IP"},
+	{nil, "canonicaljson: Unmarshal(nil)"},
+	{struct{}{}, "canonicaljson: Unmarshal(non-pointer struct {})"},
+	{(*int)(nil), "canonicaljson: Unmarshal(nil *int)"},
+	{new(net.IP), "canonicaljson: cannot unmarshal string into Go value of type *net.IP"},
 }
 
 func TestInvalidUnmarshalText(t *testing.T) {

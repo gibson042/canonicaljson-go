@@ -1,3 +1,4 @@
+// Copyright 2016 Richard Gibson. All rights reserved.
 // Copyright 2010 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
@@ -5,7 +6,7 @@
 // Represents JSON data structure using native Go types: booleans, floats,
 // strings, arrays, and maps.
 
-package json
+package canonicaljson
 
 import (
 	"bytes"
@@ -114,7 +115,7 @@ type UnmarshalTypeError struct {
 }
 
 func (e *UnmarshalTypeError) Error() string {
-	return "json: cannot unmarshal " + e.Value + " into Go value of type " + e.Type.String()
+	return "canonicaljson: cannot unmarshal " + e.Value + " into Go value of type " + e.Type.String()
 }
 
 // An UnmarshalFieldError describes a JSON object key that
@@ -127,7 +128,7 @@ type UnmarshalFieldError struct {
 }
 
 func (e *UnmarshalFieldError) Error() string {
-	return "json: cannot unmarshal object key " + strconv.Quote(e.Key) + " into unexported field " + e.Field.Name + " of type " + e.Type.String()
+	return "canonicaljson: cannot unmarshal object key " + strconv.Quote(e.Key) + " into unexported field " + e.Field.Name + " of type " + e.Type.String()
 }
 
 // An InvalidUnmarshalError describes an invalid argument passed to Unmarshal.
@@ -138,13 +139,13 @@ type InvalidUnmarshalError struct {
 
 func (e *InvalidUnmarshalError) Error() string {
 	if e.Type == nil {
-		return "json: Unmarshal(nil)"
+		return "canonicaljson: Unmarshal(nil)"
 	}
 
 	if e.Type.Kind() != reflect.Ptr {
-		return "json: Unmarshal(non-pointer " + e.Type.String() + ")"
+		return "canonicaljson: Unmarshal(non-pointer " + e.Type.String() + ")"
 	}
-	return "json: Unmarshal(nil " + e.Type.String() + ")"
+	return "canonicaljson: Unmarshal(nil " + e.Type.String() + ")"
 }
 
 func (d *decodeState) unmarshal(v interface{}) (err error) {
@@ -678,7 +679,7 @@ func (d *decodeState) object(v reflect.Value) {
 			case string:
 				d.literalStore([]byte(qv), subv, true)
 			default:
-				d.saveError(fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal unquoted value into %v", subv.Type()))
+				d.saveError(fmt.Errorf("canonicaljson: invalid use of ,string struct tag, trying to unmarshal unquoted value into %v", subv.Type()))
 			}
 		} else {
 			d.value(subv)
@@ -741,7 +742,7 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 	// Check for unmarshaler.
 	if len(item) == 0 {
 		//Empty string given
-		d.saveError(fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type()))
+		d.saveError(fmt.Errorf("canonicaljson: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type()))
 		return
 	}
 	wantptr := item[0] == 'n' // null
@@ -756,7 +757,7 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 	if ut != nil {
 		if item[0] != '"' {
 			if fromQuoted {
-				d.saveError(fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type()))
+				d.saveError(fmt.Errorf("canonicaljson: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type()))
 			} else {
 				d.saveError(&UnmarshalTypeError{"string", v.Type(), int64(d.off)})
 			}
@@ -765,7 +766,7 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 		s, ok := unquoteBytes(item)
 		if !ok {
 			if fromQuoted {
-				d.error(fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type()))
+				d.error(fmt.Errorf("canonicaljson: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type()))
 			} else {
 				d.error(errPhase)
 			}
@@ -791,7 +792,7 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 		switch v.Kind() {
 		default:
 			if fromQuoted {
-				d.saveError(fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type()))
+				d.saveError(fmt.Errorf("canonicaljson: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type()))
 			} else {
 				d.saveError(&UnmarshalTypeError{"bool", v.Type(), int64(d.off)})
 			}
@@ -809,7 +810,7 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 		s, ok := unquoteBytes(item)
 		if !ok {
 			if fromQuoted {
-				d.error(fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type()))
+				d.error(fmt.Errorf("canonicaljson: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type()))
 			} else {
 				d.error(errPhase)
 			}
@@ -842,7 +843,7 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 	default: // number
 		if c != '-' && (c < '0' || c > '9') {
 			if fromQuoted {
-				d.error(fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type()))
+				d.error(fmt.Errorf("canonicaljson: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type()))
 			} else {
 				d.error(errPhase)
 			}
@@ -853,12 +854,12 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 			if v.Kind() == reflect.String && v.Type() == numberType {
 				v.SetString(s)
 				if !isValidNumber(s) {
-					d.error(fmt.Errorf("json: invalid number literal, trying to unmarshal %q into Number", item))
+					d.error(fmt.Errorf("canonicaljson: invalid number literal, trying to unmarshal %q into Number", item))
 				}
 				break
 			}
 			if fromQuoted {
-				d.error(fmt.Errorf("json: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type()))
+				d.error(fmt.Errorf("canonicaljson: invalid use of ,string struct tag, trying to unmarshal %q into %v", item, v.Type()))
 			} else {
 				d.error(&UnmarshalTypeError{"number", v.Type(), int64(d.off)})
 			}
