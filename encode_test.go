@@ -94,7 +94,7 @@ func TestStringTag(t *testing.T) {
 		t.Fatalf(" got: %s\nwant: %s\n", got, stringTagExpected)
 	}
 
-	// Verify that it round-trips.
+	// Verify that it round-trips with the standard package.
 	var s2 StringTag
 	err = json.NewDecoder(bytes.NewReader(got)).Decode(&s2)
 	if err != nil {
@@ -670,8 +670,17 @@ func TestFloat(t *testing.T) {
 				t.Errorf(" float(%s)\n got: %s\n want: %s\n", input, result, expected)
 			}
 
-			inputDecimal := json.Number(input)
-			result, err = Marshal(inputDecimal)
+			inputNumber := Number(input)
+			result, err = Marshal(inputNumber)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(result) != expected {
+				t.Errorf(" Number(%s)\n got: %s\n want: %s\n", input, result, expected)
+			}
+
+			inputJsonNumber := json.Number(input)
+			result, err = Marshal(inputJsonNumber)
 			if err != nil {
 				t.Fatal(err)
 			}

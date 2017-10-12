@@ -45,7 +45,7 @@ var ifaceNumAsFloat64 = map[string]interface{}{
 var ifaceNumAsNumber = map[string]interface{}{
 	"k1": Number("1"),
 	"k2": "s",
-	"k3": []interface{}{Number("1"), Number("2.0"), Number("3e-3")},
+	"k3": []interface{}{Number("1"), Number("2"), Number("3.0E-3")},
 	"k4": map[string]interface{}{"kk1": "s", "kk2": Number("2")},
 }
 
@@ -204,6 +204,7 @@ type S13 struct {
 }
 
 type unmarshalTest struct {
+	label     string
 	in        string
 	ptr       interface{}
 	out       interface{}
@@ -245,8 +246,8 @@ var unmarshalTests = []unmarshalTest{
 	{in: `{"x": 1}`, ptr: new(tx), out: tx{}},
 	{in: `{"F1":1,"F2":2,"F3":3}`, ptr: new(V), out: V{F1: float64(1), F2: int32(2), F3: Number("3")}},
 	{in: `{"F1":1,"F2":2,"F3":3}`, ptr: new(V), out: V{F1: Number("1"), F2: int32(2), F3: Number("3")}, useNumber: true},
-	{in: `{"k1":1,"k2":"s","k3":[1,2.0,3e-3],"k4":{"kk1":"s","kk2":2}}`, ptr: new(interface{}), out: ifaceNumAsFloat64},
-	{in: `{"k1":1,"k2":"s","k3":[1,2.0,3e-3],"k4":{"kk1":"s","kk2":2}}`, ptr: new(interface{}), out: ifaceNumAsNumber, useNumber: true},
+	{label: "interface as float64", in: `{"k1":1,"k2":"s","k3":[1,2.0,3e-3],"k4":{"kk1":"s","kk2":2}}`, ptr: new(interface{}), out: ifaceNumAsFloat64},
+	{label: "interface as Number", in: `{"k1":1,"k2":"s","k3":[1,2,3.0E-3],"k4":{"kk1":"s","kk2":2}}`, ptr: new(interface{}), out: ifaceNumAsNumber, useNumber: true},
 
 	// raw values with whitespace
 	{in: "\n true ", ptr: new(bool), out: true},
@@ -417,44 +418,16 @@ var unmarshalTests = []unmarshalTest{
 		out: "hello\ufffd\ufffdworld",
 	},
 	{
-		in:  "\"hello\\ud800\\ud800world\"",
-		ptr: new(string),
-		out: "hello\ufffd\ufffdworld",
-	},
-	{
 		in:  "\"hello\xed\xa0\x80\xed\xb0\x80world\"",
 		ptr: new(string),
 		out: "hello\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdworld",
 	},
-
-	// issue 8305
 	{
-		in:  `{"2009-11-10T23:00:00Z": "hello world"}`,
-		ptr: &map[time.Time]string{},
-		err: &UnmarshalTypeError{"object", reflect.TypeOf(map[time.Time]string{}), 1},
+		label: "issue 8305",
+		in:    `{"2009-11-10T23:00:00Z": "hello world"}`,
+		ptr:   &map[time.Time]string{},
+		err:   &UnmarshalTypeError{"object", reflect.TypeOf(map[time.Time]string{}), 1},
 	},
-}
-
-func TestMarshal(t *testing.T) {
-	b, err := Marshal(allValue)
-	if err != nil {
-		t.Fatalf("Marshal allValue: %v", err)
-	}
-	if string(b) != allValueCompact {
-		t.Errorf("Marshal allValueCompact")
-		diff(t, b, []byte(allValueCompact))
-		return
-	}
-
-	b, err = Marshal(pallValue)
-	if err != nil {
-		t.Fatalf("Marshal pallValue: %v", err)
-	}
-	if string(b) != pallValueCompact {
-		t.Errorf("Marshal pallValueCompact")
-		diff(t, b, []byte(pallValueCompact))
-		return
-	}
 }
 
 var badUTF8 = []struct {
@@ -477,15 +450,15 @@ func TestMarshalBadUTF8(t *testing.T) {
 	}
 }
 
+// TestMarshalNumberZeroVal ensures that, unlike encoding/json, we don't
+// marshal empty strings as "0".
 func TestMarshalNumberZeroVal(t *testing.T) {
-	var n Number
-	out, err := Marshal(n)
-	if err != nil {
-		t.Fatal(err)
-	}
-	outStr := string(out)
-	if outStr != "0" {
-		t.Fatalf("Invalid zero val for Number: %q", outStr)
+	n := Number("")
+	_, err := Marshal(n)
+	got := fmt.Sprintf("%v", err)
+	want := `canonicaljson: invalid number literal ""`
+	if got != want {
+		t.Fatalf("got err = %q, want %q", got, err)
 	}
 }
 
@@ -525,7 +498,7 @@ func TestMarshalEmbeds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "{\"Level0\":1,\"Level1b\":2,\"Level1c\":3,\"Level1a\":5,\"LEVEL1B\":6,\"e\":{\"Level1a\":8,\"Level1b\":9,\"Level1c\":10,\"Level1d\":11,\"x\":12},\"Loop1\":13,\"Loop2\":14,\"X\":15,\"Y\":16,\"Z\":17,\"Q\":18}"
+	want := `{"LEVEL1B":6,"Level0":1,"Level1a":5,"Level1b":2,"Level1c":3,"Loop1":13,"Loop2":14,"Q":18,"X":15,"Y":16,"Z":17,"e":{"Level1a":8,"Level1b":9,"Level1c":10,"Level1d":11,"x":12}}`
 	if string(b) != want {
 		t.Errorf("Wrong marshal result.\n got: %q\nwant: %q", b, want)
 	}
@@ -533,11 +506,12 @@ func TestMarshalEmbeds(t *testing.T) {
 
 func TestUnmarshal(t *testing.T) {
 	for i, tt := range unmarshalTests {
+		label := fmt.Sprintf("#%d %s [%q]", i, tt.label, tt.in)
 		var scan scanner
 		in := []byte(tt.in)
 		if err := checkValid(in, &scan); err != nil {
 			if !reflect.DeepEqual(err, tt.err) {
-				t.Errorf("#%d: checkValid: %#v", i, err)
+				t.Errorf("%s: checkValid: %#v", label, err)
 				continue
 			}
 		}
@@ -552,13 +526,13 @@ func TestUnmarshal(t *testing.T) {
 			dec.UseNumber()
 		}
 		if err := dec.Decode(v.Interface()); !reflect.DeepEqual(err, tt.err) {
-			t.Errorf("#%d: %v, want %v", i, err, tt.err)
+			t.Errorf("%s: Decode error: have %v, want %v", label, err, tt.err)
 			continue
 		} else if err != nil {
 			continue
 		}
 		if !reflect.DeepEqual(v.Elem().Interface(), tt.out) {
-			t.Errorf("#%d: mismatch\nhave: %#+v\nwant: %#+v", i, v.Elem().Interface(), tt.out)
+			t.Errorf("%s: Decode mismatch\nhave: %#+v\nwant: %#+v", label, v.Elem().Interface(), tt.out)
 			data, _ := Marshal(v.Elem().Interface())
 			println(string(data))
 			data, _ = Marshal(tt.out)
@@ -570,7 +544,7 @@ func TestUnmarshal(t *testing.T) {
 		if tt.err == nil {
 			enc, err := Marshal(v.Interface())
 			if err != nil {
-				t.Errorf("#%d: error re-marshaling: %v", i, err)
+				t.Errorf("%s: error re-marshaling: %v", label, err)
 				continue
 			}
 			vv := reflect.New(reflect.TypeOf(tt.ptr).Elem())
@@ -579,33 +553,16 @@ func TestUnmarshal(t *testing.T) {
 				dec.UseNumber()
 			}
 			if err := dec.Decode(vv.Interface()); err != nil {
-				t.Errorf("#%d: error re-unmarshaling %#q: %v", i, enc, err)
+				t.Errorf("%s: error re-unmarshaling %#q: %v", label, enc, err)
 				continue
 			}
 			if !reflect.DeepEqual(v.Elem().Interface(), vv.Elem().Interface()) {
-				t.Errorf("#%d: mismatch\nhave: %#+v\nwant: %#+v", i, v.Elem().Interface(), vv.Elem().Interface())
+				t.Errorf("%s: round-trip mismatch\nhave: %#+v\nwant: %#+v", label, v.Elem().Interface(), vv.Elem().Interface())
 				t.Errorf("     In: %q", strings.Map(noSpace, string(in)))
 				t.Errorf("Marshal: %q", strings.Map(noSpace, string(enc)))
 				continue
 			}
 		}
-	}
-}
-
-func TestUnmarshalMarshal(t *testing.T) {
-	initBig()
-	var v interface{}
-	if err := Unmarshal(jsonBig, &v); err != nil {
-		t.Fatalf("Unmarshal: %v", err)
-	}
-	b, err := Marshal(v)
-	if err != nil {
-		t.Fatalf("Marshal: %v", err)
-	}
-	if !bytes.Equal(jsonBig, b) {
-		t.Errorf("Marshal jsonBig")
-		diff(t, b, jsonBig)
-		return
 	}
 }
 
@@ -688,7 +645,7 @@ func TestUnmarshalPtrPtr(t *testing.T) {
 
 func TestEscape(t *testing.T) {
 	const input = `"foobar"<html>` + " [\u2028 \u2029]"
-	const expected = `"\"foobar\"\u003chtml\u003e [\u2028 \u2029]"`
+	const expected = `"` + `\"foobar\"<html>` + " [\u2028 \u2029]" + `"`
 	b, err := Marshal(input)
 	if err != nil {
 		t.Fatalf("Marshal error: %v", err)

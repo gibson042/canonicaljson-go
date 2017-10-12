@@ -171,6 +171,7 @@ func (d *decodeState) unmarshal(v interface{}) (err error) {
 }
 
 // A Number represents a JSON number literal.
+// TODO(go>=1.9): type Number = json.Number
 type Number string
 
 // String returns the literal text of the number.

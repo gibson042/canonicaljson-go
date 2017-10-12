@@ -215,6 +215,7 @@ func (e *MarshalerError) Error() string {
 }
 
 var hex = "0123456789abcdef"
+var jsonNumberType = reflect.TypeOf(json.Number(""))
 
 // An encodeState encodes JSON into a bytes.Buffer.
 type encodeState struct {
@@ -603,7 +604,7 @@ var (
 )
 
 func stringEncoder(e *encodeState, v reflect.Value, quoted bool) {
-	if v.Type() == numberType {
+	if t := v.Type(); t == numberType || t == jsonNumberType {
 		numStr := v.String()
 		if !isValidNumber(numStr) {
 			e.error(fmt.Errorf("canonicaljson: invalid number literal %q", numStr))
