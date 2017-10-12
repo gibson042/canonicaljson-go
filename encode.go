@@ -395,7 +395,7 @@ func marshalerEncoder(e *encodeState, v reflect.Value, quoted bool) {
 	var data interface{}
 	var jsonBlob []byte
 	if err == nil {
-		err = json.Unmarshal(b, &data)
+		err = Unmarshal(b, &data)
 	}
 	if err == nil {
 		jsonBlob, err = Marshal(data)
@@ -421,7 +421,7 @@ func addrMarshalerEncoder(e *encodeState, v reflect.Value, quoted bool) {
 	var data interface{}
 	var jsonBlob []byte
 	if err == nil {
-		err = json.Unmarshal(b, &data)
+		err = Unmarshal(b, &data)
 	}
 	if err == nil {
 		jsonBlob, err = Marshal(data)

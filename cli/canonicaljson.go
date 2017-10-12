@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/gibson042/canonicaljson-go"
@@ -18,16 +17,16 @@ func main() {
 
 	for _, srcFile := range srcFiles {
 		var data interface{}
-		var decoder *json.Decoder
+		var decoder *canonicaljson.Decoder
 
 		if srcFile == "-" {
-			decoder = json.NewDecoder(os.Stdin)
+			decoder = canonicaljson.NewDecoder(os.Stdin)
 		} else {
 			file, err := os.Open(srcFile)
 			if err != nil {
 				log.Fatal(err)
 			}
-			decoder = json.NewDecoder(file)
+			decoder = canonicaljson.NewDecoder(file)
 		}
 		// Handle numbers with infinite precision.
 		decoder.UseNumber()

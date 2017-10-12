@@ -6,7 +6,6 @@
 package canonicaljson
 
 import (
-	"encoding/json"
 	"testing"
 )
 
@@ -99,7 +98,7 @@ func TestStructTagObjectKey(t *testing.T) {
 			t.Fatalf("Marshal(%#q) failed: %v", tt.raw, err)
 		}
 		var f interface{}
-		err = json.Unmarshal(b, &f)
+		err = Unmarshal(b, &f)
 		if err != nil {
 			t.Fatalf("Unmarshal(%#q) failed: %v", b, err)
 		}
