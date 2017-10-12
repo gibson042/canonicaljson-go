@@ -88,6 +88,8 @@ import (
 // runes that cannot be losslessly serialized to UTF-8 and might produce
 // unexpected behavior if passed to functions expecting all strings to
 // contain valid UTF-8.
+// This package's Marshal function checks for such runes and emits them
+// as valid JSON escape sequences.
 //
 func Unmarshal(data []byte, v interface{}) error {
 	// Check for well-formedness.

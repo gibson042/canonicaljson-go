@@ -454,26 +454,6 @@ var unmarshalTests = []unmarshalTest{
 	},
 }
 
-var badUTF8 = []struct {
-	in, out string
-}{
-	{"hello\xffworld", `"hello\ufffdworld"`},
-	{"", `""`},
-	{"\xff", `"\ufffd"`},
-	{"\xff\xff", `"\ufffd\ufffd"`},
-	{"a\xffb", `"a\ufffdb"`},
-	{"\xe6\x97\xa5\xe6\x9c\xac\xff\xaa\x9e", `"日本\ufffd\ufffd\ufffd"`},
-}
-
-func TestMarshalBadUTF8(t *testing.T) {
-	for _, tt := range badUTF8 {
-		b, err := Marshal(tt.in)
-		if string(b) != tt.out || err != nil {
-			t.Errorf("Marshal(%q) = %#q, %v, want %#q, nil", tt.in, b, err, tt.out)
-		}
-	}
-}
-
 // TestMarshalNumberZeroVal ensures that, unlike encoding/json, we don't
 // marshal empty strings as "0".
 func TestMarshalNumberZeroVal(t *testing.T) {
