@@ -14,7 +14,10 @@ package canonicaljson
 // This file starts with two simple examples using the scanner
 // before diving into the scanner itself.
 
-import "strconv"
+import (
+	"fmt"
+	"strconv"
+)
 
 // checkValid verifies that data is valid JSON-encoded data.
 // scan is passed in for use by checkValid to avoid an allocation.
@@ -340,7 +343,105 @@ func stateInString(s *scanner, c byte) int {
 	}
 	if c < 0x20 {
 		return s.error(c, "in string literal")
+	} else if c >= 0x80 {
+		// Require a well-formed UTF-8 sequence.
+		// See Table 3-7 in http://www.unicode.org/versions/Unicode10.0.0/ch03.pdf#G7404
+		if c >= 0xC2 && c <= 0xDF {
+			s.step = stateInStringContinuation1
+		} else if c == 0xE0 {
+			s.step = stateInStringContinuation2_E0
+		} else if c == 0xED {
+			s.step = stateInStringContinuation2_ED
+		} else if c >= 0xE1 && c <= 0xEF {
+			s.step = stateInStringContinuation2
+		} else if c == 0xF0 {
+			s.step = stateInStringContinuation3_F0
+		} else if c == 0xF4 {
+			s.step = stateInStringContinuation3_F4
+		} else if c >= 0xF1 && c <= 0xF3 {
+			s.step = stateInStringContinuation3
+		} else {
+			return s.error(c, "in string literal (expecting UTF-8 leading byte)")
+		}
 	}
+	return scanContinue
+}
+
+// stateInStringContinuation1 is the state after reading all but the
+// final byte of a UTF-8 multi-byte sequence in a quoted string.
+func stateInStringContinuation1(s *scanner, c byte) int {
+	if c&0xC0 != 0x80 {
+		return s.error(c, "in UTF-8 multi-byte sequence (expecting UTF-8 continuation byte)")
+	}
+	s.step = stateInString
+	return scanContinue
+}
+
+// stateInStringContinuation2 is the state after reading all but the
+// final two bytes of a UTF-8 multi-byte sequence in a quoted string.
+func stateInStringContinuation2(s *scanner, c byte) int {
+	if c&0xC0 != 0x80 {
+		return s.error(c, "in UTF-8 multi-byte sequence (expecting UTF-8 continuation byte)")
+	}
+	s.step = stateInStringContinuation1
+	return scanContinue
+}
+
+// stateInStringContinuation2_E0 is the state after reading an 0xE0 byte
+// in a quoted string.
+func stateInStringContinuation2_E0(s *scanner, c byte) int {
+	if c&0xC0 != 0x80 {
+		return s.error(c, "in UTF-8 three-byte sequence (expecting UTF-8 continuation byte)")
+	} else if c < 0xA0 {
+		return s.error(c, "in UTF-8 three-byte sequence (expecting well-formed UTF-8 continuation byte)")
+	}
+	s.step = stateInStringContinuation1
+	return scanContinue
+}
+
+// stateInStringContinuation2_ED is the state after reading an 0xED byte
+// in a quoted string.
+func stateInStringContinuation2_ED(s *scanner, c byte) int {
+	if c&0xC0 != 0x80 {
+		return s.error(c, "in UTF-8 three-byte sequence (expecting UTF-8 continuation byte)")
+	} else if c > 0x9F {
+		return s.error(c, "in UTF-8 three-byte sequence (expecting well-formed UTF-8 continuation byte)")
+	}
+	s.step = stateInStringContinuation1
+	return scanContinue
+}
+
+// stateInStringContinuation3 is the state after reading all but the
+// final three bytes of a UTF-8 multi-byte sequence in a quoted string.
+func stateInStringContinuation3(s *scanner, c byte) int {
+	if c&0xC0 != 0x80 {
+		return s.error(c, "in UTF-8 multi-byte sequence (expecting UTF-8 continuation byte)")
+	}
+	s.step = stateInStringContinuation2
+	return scanContinue
+}
+
+// stateInStringContinuation3_F0 is the state after reading an 0xF0 byte
+// in a quoted string.
+func stateInStringContinuation3_F0(s *scanner, c byte) int {
+	if c&0xC0 != 0x80 {
+		return s.error(c, "in UTF-8 four-byte sequence (expecting UTF-8 continuation byte)")
+	} else if c < 0x90 {
+		return s.error(c, "in UTF-8 four-byte sequence (expecting well-formed UTF-8 continuation byte)")
+	}
+	s.step = stateInStringContinuation2
+	return scanContinue
+}
+
+// stateInStringContinuation3_F4 is the state after reading an 0xF4 byte
+// in a quoted string.
+func stateInStringContinuation3_F4(s *scanner, c byte) int {
+	if c&0xC0 != 0x80 {
+		return s.error(c, "in UTF-8 four-byte sequence (expecting UTF-8 continuation byte)")
+	} else if c > 0x8F {
+		return s.error(c, "in UTF-8 four-byte sequence (expecting well-formed UTF-8 continuation byte)")
+	}
+	s.step = stateInStringContinuation2
 	return scanContinue
 }
 
@@ -591,17 +692,11 @@ func (s *scanner) error(c byte, context string) int {
 
 // quoteChar formats c as a quoted character literal
 func quoteChar(c byte) string {
-	// special cases - different from quoted strings
-	if c == '\'' {
-		return `'\''`
+	// Force escapes (where necessary) to use \x.
+	if c < 0x7F {
+		return strconv.QuoteRune(rune(c))
 	}
-	if c == '"' {
-		return `'"'`
-	}
-
-	// use quoted string with different quotation marks
-	s := strconv.Quote(string(c))
-	return "'" + s[1:len(s)-1] + "'"
+	return fmt.Sprintf("'\\x%02x'", c)
 }
 
 // undo causes the scanner to return scanCode from the next state transition.

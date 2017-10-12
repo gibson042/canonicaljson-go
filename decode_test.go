@@ -227,6 +227,34 @@ type XYZ struct {
 func sliceAddr(x []int) *[]int                 { return &x }
 func mapAddr(x map[string]int) *map[string]int { return &x }
 
+// wtf8 returns a UTF-8 like encoding of a code point, even if it is a surrogate.
+// See http://www.unicode.org/versions/Unicode10.0.0/ch03.pdf#G7404
+func wtf8(cp rune) string {
+	var result []byte
+	if cp < 0x80 {
+		result = []byte{byte(cp)}
+	} else if cp < 0x800 {
+		result = []byte{
+			0xC0 | byte(cp>>6),
+			0x80 | byte(cp&0x3F),
+		}
+	} else if cp < 0x10000 {
+		result = []byte{
+			0xE0 | byte(cp>>12),
+			0x80 | byte((cp>>6)&0x3F),
+			0x80 | byte(cp&0x3F),
+		}
+	} else {
+		result = []byte{
+			0xF0 | byte(cp>>18),
+			0x80 | byte((cp>>12)&0x3F),
+			0x80 | byte((cp>>6)&0x3F),
+			0x80 | byte(cp&0x3F),
+		}
+	}
+	return string(result)
+}
+
 var unmarshalTests = []unmarshalTest{
 	// basic types
 	{in: `true`, ptr: new(bool), out: true},
@@ -240,7 +268,7 @@ var unmarshalTests = []unmarshalTest{
 	{in: `"a\u1234"`, ptr: new(string), out: "a\u1234"},
 	{in: `"http:\/\/"`, ptr: new(string), out: "http://"},
 	{in: `"g-clef: \uD834\uDD1E"`, ptr: new(string), out: "g-clef: \U0001D11E"},
-	{in: `"invalid: \uD834x\uDD1E"`, ptr: new(string), out: "invalid: \uFFFDx\uFFFD"},
+	{in: `"lone surrogates: \uD834x\uDD1E"`, ptr: new(string), out: "lone surrogates: " + wtf8(0xD834) + "x" + wtf8(0xDD1E)},
 	{in: "null", ptr: new(interface{}), out: nil},
 	{in: `{"X": [1,2,3], "Y": 4}`, ptr: new(T), out: T{Y: 4}, err: &UnmarshalTypeError{"array", reflect.TypeOf(""), 7}},
 	{in: `{"x": 1}`, ptr: new(tx), out: tx{}},
@@ -391,36 +419,32 @@ var unmarshalTests = []unmarshalTest{
 		out: S10{S13: S13{S8: S8{S9: S9{Y: 2}}}},
 	},
 
-	// invalid UTF-8 is coerced to valid UTF-8.
+	// Ill-formed UTF-8 is rejected.
 	{
 		in:  "\"hello\xffworld\"",
-		ptr: new(string),
-		out: "hello\ufffdworld",
+		err: &SyntaxError{"invalid character '\\xff' in string literal (expecting UTF-8 leading byte)", 7},
 	},
 	{
 		in:  "\"hello\xc2\xc2world\"",
-		ptr: new(string),
-		out: "hello\ufffd\ufffdworld",
+		err: &SyntaxError{"invalid character '\\xc2' in UTF-8 multi-byte sequence (expecting UTF-8 continuation byte)", 8},
 	},
 	{
 		in:  "\"hello\xc2\xffworld\"",
-		ptr: new(string),
-		out: "hello\ufffd\ufffdworld",
+		err: &SyntaxError{"invalid character '\\xff' in UTF-8 multi-byte sequence (expecting UTF-8 continuation byte)", 8},
 	},
 	{
 		in:  "\"hello\\ud800world\"",
 		ptr: new(string),
-		out: "hello\ufffdworld",
+		out: "hello" + wtf8(0xd800) + "world",
 	},
 	{
 		in:  "\"hello\\ud800\\ud800world\"",
 		ptr: new(string),
-		out: "hello\ufffd\ufffdworld",
+		out: "hello" + wtf8(0xd800) + wtf8(0xd800) + "world",
 	},
 	{
 		in:  "\"hello\xed\xa0\x80\xed\xb0\x80world\"",
-		ptr: new(string),
-		out: "hello\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdworld",
+		err: &SyntaxError{"invalid character '\\xa0' in UTF-8 three-byte sequence (expecting well-formed UTF-8 continuation byte)", 8},
 	},
 	{
 		label: "issue 8305",

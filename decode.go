@@ -22,7 +22,7 @@ import (
 	"unicode/utf8"
 )
 
-// Unmarshal parses the JSON-encoded data and stores the result
+// Unmarshal parses the JSON-encoded UTF-8 data and stores the result
 // in the value pointed to by v.
 //
 // Unmarshal uses the inverse of the encodings that
@@ -78,10 +78,16 @@ import (
 // ``not present,'' unmarshaling a JSON null into any other Go type has no effect
 // on the value and produces no error.
 //
-// When unmarshaling quoted strings, invalid UTF-8 or
-// invalid UTF-16 surrogate pairs are not treated as an error.
-// Instead, they are replaced by the Unicode replacement
-// character U+FFFD.
+// Invalid UTF-8 input is always treated as an error, even if it is
+// encountered when unmarshaling a quoted string (in contrast to
+// encoding/json, which replaces bad octets with U+FFFD REPLACEMENT
+// CHARACTER).
+// However, `\uXXXX` JSON string escape sequences specifying lone
+// surrogates (code points U+D800 through U+DFFF [inclusive] that are
+// not part of a surrogate pair) are interpreted to produce "WTF-8"
+// runes that cannot be losslessly serialized to UTF-8 and might produce
+// unexpected behavior if passed to functions expecting all strings to
+// contain valid UTF-8.
 //
 func Unmarshal(data []byte, v interface{}) error {
 	// Check for well-formedness.
@@ -1142,8 +1148,16 @@ func unquoteBytes(s []byte) (t []byte, ok bool) {
 						w += utf8.EncodeRune(b[w:], dec)
 						break
 					}
-					// Invalid surrogate; fall back to replacement rune.
-					rr = unicode.ReplacementChar
+					// Lone surrogate; represent with a "WTF-8" encoding.
+					w += copy(b[w:], []byte{
+						// 3-octet leading byte (4 bits of data)
+						0xE0 | byte(rr>>12),
+						// first continuation byte (6 bits of data)
+						0x80 | byte((rr>>6)&0x3F),
+						// second continuation byte (6 bits of data)
+						0x80 | byte(rr&0x3F),
+					})
+					break
 				}
 				w += utf8.EncodeRune(b[w:], rr)
 			}
@@ -1158,9 +1172,12 @@ func unquoteBytes(s []byte) (t []byte, ok bool) {
 			r++
 			w++
 
-		// Coerce to well-formed UTF-8.
+		// Reject ill-formed UTF-8.
 		default:
 			rr, size := utf8.DecodeRune(s[r:])
+			if rr == utf8.RuneError && size == 1 {
+				return
+			}
 			r += size
 			w += utf8.EncodeRune(b[w:], rr)
 		}
