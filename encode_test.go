@@ -8,6 +8,7 @@ package canonicaljson
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"math"
 	"reflect"
 	"strconv"
@@ -94,7 +95,7 @@ func TestStringTag(t *testing.T) {
 		t.Fatalf(" got: %s\nwant: %s\n", got, stringTagExpected)
 	}
 
-	// Verify that it round-trips.
+	// Verify that it round-trips with the standard package.
 	var s2 StringTag
 	err = json.NewDecoder(bytes.NewReader(got)).Decode(&s2)
 	if err != nil {
@@ -134,16 +135,32 @@ var unsupportedValues = []interface{}{
 	math.NaN(),
 	math.Inf(-1),
 	math.Inf(1),
+	// Ill-formed UTF-8
+	"\x80",
+	"\xcf",
+	"\xed",
+	"\xed\xa0",
+	"\xed\xa0\x7e",
+	"\xed\xa0\xc0",
+	"\xf8\x82\x83\x84",
+	"\xed\xa0\x80\xed\xbf\xbf",
+	"\xed\xa0\x80\xed",
+	"hello\xffworld",
+	"\xff",
+	"\xff\xff",
+	"a\xffb",
+	"\xe6\x97\xa5\xe6\x9c\xac\xff\xaa\x9e",
 }
 
 func TestUnsupportedValues(t *testing.T) {
-	for _, v := range unsupportedValues {
+	for i, v := range unsupportedValues {
+		label := fmt.Sprintf("#%d [%#v]", i, v)
 		if _, err := Marshal(v); err != nil {
 			if _, ok := err.(*UnsupportedValueError); !ok {
-				t.Errorf("for %v, got %T want UnsupportedValueError", v, err)
+				t.Errorf("%s: got %T, want UnsupportedValueError", label, err)
 			}
 		} else {
-			t.Errorf("for %v, expected error", v)
+			t.Errorf("%s: expected error", label)
 		}
 	}
 }
@@ -383,7 +400,8 @@ func TestStringBytes(t *testing.T) {
 	for i := '\u0000'; i <= unicode.MaxRune; i++ {
 		r = append(r, i)
 	}
-	s := string(r) + "\xff\xff\xffhello" // some invalid UTF-8 too
+	// Include some valid non-UTF-8 sequences.
+	s := string(r) + "\xed\xbf\xbf\xed\xa0\x80"
 	es.string(s)
 
 	esBytes := &encodeState{}
@@ -482,6 +500,7 @@ var encodeStringTests = []struct {
 	in  string
 	out string
 }{
+	{"", `""`},
 	{"\x00", `"\u0000"`},
 	{"\x01", `"\u0001"`},
 	{"\x02", `"\u0002"`},
@@ -515,6 +534,13 @@ var encodeStringTests = []struct {
 	{"\x1e", `"\u001e"`},
 	{"\x1f", `"\u001f"`},
 	{"\x7f", "\"\x7f\""},
+	{"\xe6\x97\xa5\xe6\x9c\xac", `"日本"`},
+	{"\xed\xa0\x80", `"\ud800"`},
+	{"\xed\xa0\x80a", `"\ud800a"`},
+	{"\xed\xbf\xbf", `"\udfff"`},
+	{"\xed\xbf\xbfa", `"\udfffa"`},
+	{"\xed\xbf\xbf\xed\xa0\x80", `"\udfff\ud800"`},
+	{"\xed\xbf\xbf\xed\xa0\x80a", `"\udfff\ud800a"`},
 }
 
 func TestEncodeString(t *testing.T) {
@@ -670,8 +696,17 @@ func TestFloat(t *testing.T) {
 				t.Errorf(" float(%s)\n got: %s\n want: %s\n", input, result, expected)
 			}
 
-			inputDecimal := json.Number(input)
-			result, err = Marshal(inputDecimal)
+			inputNumber := Number(input)
+			result, err = Marshal(inputNumber)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(result) != expected {
+				t.Errorf(" Number(%s)\n got: %s\n want: %s\n", input, result, expected)
+			}
+
+			inputJsonNumber := json.Number(input)
+			result, err = Marshal(inputJsonNumber)
 			if err != nil {
 				t.Fatal(err)
 			}

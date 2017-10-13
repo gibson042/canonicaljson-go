@@ -11,7 +11,7 @@
 // in fact, this package is essentially a 2016-03-09 fork from
 // golang/go@9d77ad8d34ce56e182adc30cd21af50a4b00932c:src/encoding/json
 // ). Notable differences:
-//   - Object keys are sorted lexicographically by codepoint
+//   - Object keys are sorted lexicographically by code point
 //   - Non-integer JSON numbers are represented in capital-E exponential
 //     notation with significand in (-10, 10) and no insignificant signs
 //     or zeroes beyond those required to force a decimal point.
@@ -38,7 +38,7 @@ import (
 	"unicode/utf8"
 )
 
-// Marshal returns the canonical JSON encoding of v.
+// Marshal returns the canonical UTF-8 JSON encoding of v.
 //
 // Marshal traverses the value v recursively.
 // If an encountered value implements the json.Marshaler interface
@@ -61,12 +61,17 @@ import (
 // than 10 that includes at least one digit both before and after the
 // decimal point, and the shortest possible non-empty exponent.
 //
-// String values encode as JSON strings coerced to valid UTF-8,
-// replacing invalid bytes with U+FFFD REPLACEMENT CHARACTER. U+2028
-// LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR (valid in JSON strings
-// but invalid in _JavaScript_ strings) are *not* escaped. Control
-// characters U+0000 through U+001F are replaced with their shortest
-// escape sequence, 4 lowercase hex characters except for the following:
+// String values encode as JSON strings, treating ill-formed UTF-8 input
+// as an error (with the exception of "WTF-8" encodings of lone
+// surrogates—code points U+D800 through U+DFFF [inclusive] that could
+// not be interpreted as part of a surrogate pair).
+// This is in contrast to encoding/json, which replaces ill-formed
+// sequences with U+FFFD REPLACEMENT CHARACTER.
+// Also in contrast to encoding/json, characters appear unescaped
+// whenever possible.
+// Control characters U+0000 through U+001F and lone surrogates U+D800
+// through U+DFFF are replaced with their shortest escape sequence,
+// 4 lowercase hex characters except for the following:
 //   - \b U+0008 BACKSPACE
 //   - \t U+0009 CHARACTER TABULATION ("tab")
 //   - \n U+000A LINE FEED ("newline")
@@ -215,6 +220,7 @@ func (e *MarshalerError) Error() string {
 }
 
 var hex = "0123456789abcdef"
+var jsonNumberType = reflect.TypeOf(json.Number(""))
 
 // An encodeState encodes JSON into a bytes.Buffer.
 type encodeState struct {
@@ -395,7 +401,7 @@ func marshalerEncoder(e *encodeState, v reflect.Value, quoted bool) {
 	var data interface{}
 	var jsonBlob []byte
 	if err == nil {
-		err = json.Unmarshal(b, &data)
+		err = Unmarshal(b, &data)
 	}
 	if err == nil {
 		jsonBlob, err = Marshal(data)
@@ -421,7 +427,7 @@ func addrMarshalerEncoder(e *encodeState, v reflect.Value, quoted bool) {
 	var data interface{}
 	var jsonBlob []byte
 	if err == nil {
-		err = json.Unmarshal(b, &data)
+		err = Unmarshal(b, &data)
 	}
 	if err == nil {
 		jsonBlob, err = Marshal(data)
@@ -603,7 +609,7 @@ var (
 )
 
 func stringEncoder(e *encodeState, v reflect.Value, quoted bool) {
-	if v.Type() == numberType {
+	if t := v.Type(); t == numberType || t == jsonNumberType {
 		numStr := v.String()
 		if !isValidNumber(numStr) {
 			e.error(fmt.Errorf("canonicaljson: invalid number literal %q", numStr))
@@ -854,68 +860,15 @@ func (sv stringValues) Swap(i, j int)      { sv[i], sv[j] = sv[j], sv[i] }
 func (sv stringValues) Less(i, j int) bool { return sv.get(i) < sv.get(j) }
 func (sv stringValues) get(i int) string   { return sv[i].String() }
 
-// NOTE: keep in sync with stringBytes below.
 func (e *encodeState) string(s string) int {
-	len0 := e.Len()
-	e.WriteByte('"')
-	start := 0
-	for i := 0; i < len(s); {
-		if b := s[i]; b < utf8.RuneSelf {
-			if 0x20 <= b && b != '\\' && b != '"' {
-				i++
-				continue
-			}
-			if start < i {
-				e.WriteString(s[start:i])
-			}
-			e.WriteByte('\\')
-			switch b {
-			case '\\', '"':
-				e.WriteByte(b)
-			case '\n':
-				e.WriteByte('n')
-			case '\r':
-				e.WriteByte('r')
-			case '\t':
-				e.WriteByte('t')
-			case '\x08': // \b
-				e.WriteByte('b')
-			case '\x0c': // \f
-				e.WriteByte('f')
-			default:
-				// This encodes other bytes < 0x20 as \u00xx.
-				e.WriteString("u00")
-				e.WriteByte(hex[b>>4])
-				e.WriteByte(hex[b&0xF])
-			}
-			i++
-			start = i
-			continue
-		}
-		c, size := utf8.DecodeRuneInString(s[i:])
-		if c == utf8.RuneError && size == 1 {
-			if start < i {
-				e.WriteString(s[start:i])
-			}
-			e.WriteString(`\ufffd`)
-			i += size
-			start = i
-			continue
-		}
-		i += size
-	}
-	if start < len(s) {
-		e.WriteString(s[start:])
-	}
-	e.WriteByte('"')
-	return e.Len() - len0
+	return e.stringBytes([]byte(s))
 }
 
-// NOTE: keep in sync with string above.
 func (e *encodeState) stringBytes(s []byte) int {
 	len0 := e.Len()
 	e.WriteByte('"')
 	start := 0
+	rejectLowSurrogateAt := -1
 	for i := 0; i < len(s); {
 		if b := s[i]; b < utf8.RuneSelf {
 			if 0x20 <= b && b != '\\' && b != '"' {
@@ -954,10 +907,32 @@ func (e *encodeState) stringBytes(s []byte) int {
 			if start < i {
 				e.Write(s[start:i])
 			}
-			e.WriteString(`\ufffd`)
-			i += size
-			start = i
-			continue
+
+			// Check for a "WTF-8" lone surrogate (and escape it).
+			// High surrogate (U+D800 through U+DBFF): 1110 1101   10 10bbbb   10 bbbbbb
+			// Low surrogate  (U+DC00 through U+DFFF): 1110 1101   10 11bbbb   10 bbbbbb
+			if s[i] == 0xED && i+2 < len(s) {
+				c2 := s[i+1]
+				c3 := s[i+2]
+				if c2 >= 0xA0 && c2 <= 0xBF && (c3&0xC0) == 0x80 {
+					// Don't let this special-case logic sneak through a valid surrogate pair.
+					if isHigh := (c2 & 0x10) == 0; isHigh || i != rejectLowSurrogateAt {
+						if isHigh {
+							rejectLowSurrogateAt = i + 3
+						}
+						e.WriteString(`\u`)
+						e.WriteByte(hex[0xD])
+						e.WriteByte(hex[(c2>>2)&0x0F])
+						e.WriteByte(hex[((c2<<2)&0x0C)|((c3>>4)&0x03)])
+						e.WriteByte(hex[c3&0x0F])
+						i += 3
+						start = i
+						continue
+					}
+				}
+			}
+
+			e.error(&UnsupportedValueError{reflect.ValueOf(s), fmt.Sprintf("%q", string(s))})
 		}
 		i += size
 	}
