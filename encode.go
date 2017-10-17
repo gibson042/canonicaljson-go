@@ -17,7 +17,7 @@
 //     or zeroes beyond those required to force a decimal point.
 //   - JSON strings are represented in UTF-8 with minimal byte length,
 //     using escapes only when necessary for validity and Unicode
-//     escapes (lowercase hex) only when there is no shorter option.
+//     escapes (uppercase hex) only when there is no shorter option.
 package canonicaljson
 
 import (
@@ -71,7 +71,7 @@ import (
 // whenever possible.
 // Control characters U+0000 through U+001F and lone surrogates U+D800
 // through U+DFFF are replaced with their shortest escape sequence,
-// 4 lowercase hex characters except for the following:
+// 4 uppercase hex characters except for the following:
 //   - \b U+0008 BACKSPACE
 //   - \t U+0009 CHARACTER TABULATION ("tab")
 //   - \n U+000A LINE FEED ("newline")
@@ -219,7 +219,7 @@ func (e *MarshalerError) Error() string {
 	return "canonicaljson: error calling MarshalJSON for type " + e.Type.String() + ": " + e.Err.Error()
 }
 
-var hex = "0123456789abcdef"
+var hex = "0123456789ABCDEF"
 var jsonNumberType = reflect.TypeOf(json.Number(""))
 
 // An encodeState encodes JSON into a bytes.Buffer.

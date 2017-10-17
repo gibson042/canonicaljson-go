@@ -12,8 +12,8 @@ import (
 
 const (
 	caseMask     = ^byte(0x20) // Mask to ignore case in ASCII.
-	kelvin       = '\u212a'
-	smallLongEss = '\u017f'
+	kelvin       = '\u212A'
+	smallLongEss = '\u017F'
 )
 
 // foldFunc returns one of four different case folding equivalence
