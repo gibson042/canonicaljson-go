@@ -11,6 +11,7 @@ Test this package by invoking `test.sh`.
 
 ```
 godoc github.com/gibson042/canonicaljson-go
+
 PACKAGE DOCUMENTATION
 
 package canonicaljson
@@ -18,7 +19,7 @@ package canonicaljson
 
     Package canonicaljson implements canonical serialization of Go objects
     to canonical-form JSON as specified at
-    https://github.com/gibson042/canonicaljson-spec . The provided interface
+    http://gibson042.github.io/canonicaljson-spec/ . The provided interface
     should match that of standard package "encoding/json" (from which it is
     derived) wherever they overlap (and in fact, this package is essentially
     a 2016-03-09 fork from
