@@ -1,5 +1,5 @@
 # canonicaljson-go
-Go library for producing JSON in canonical format as specified by [http://gibson042.github.io/canonicaljson-spec/](http://gibson042.github.io/canonicaljson-spec/).
+Go library for producing JSON in canonical format as specified by [https://gibson042.github.io/canonicaljson-spec/](https://gibson042.github.io/canonicaljson-spec/).
 The provided interface matches that of standard package "[encoding/json](https://golang.org/pkg/encoding/json/)" wherever they overlap:
 * [func `Marshal`](https://golang.org/pkg/encoding/json/#Marshal)
 * [func `MarshalIndent`](https://golang.org/pkg/encoding/json/#MarshalIndent)
@@ -19,7 +19,7 @@ package canonicaljson
 
     Package canonicaljson implements canonical serialization of Go objects
     to canonical-form JSON as specified at
-    http://gibson042.github.io/canonicaljson-spec/ . The provided interface
+    https://gibson042.github.io/canonicaljson-spec/ . The provided interface
     should match that of standard package "encoding/json" (from which it is
     derived) wherever they overlap (and in fact, this package is essentially
     a 2016-03-09 fork from

@@ -5,7 +5,7 @@
 
 // Package canonicaljson implements canonical serialization of Go
 // objects to canonical-form JSON as specified at
-// http://gibson042.github.io/canonicaljson-spec/ .
+// https://gibson042.github.io/canonicaljson-spec/ .
 // The provided interface should match that of standard package
 // "encoding/json" (from which it is derived) wherever they overlap (and
 // in fact, this package is essentially a 2016-03-09 fork from
